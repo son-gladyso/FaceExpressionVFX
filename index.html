@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>FaceVFX · Experimental FACS Visualization</title>
+  <!-- PWA Manifest & Meta -->
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/png" href="icons/icon-192.png" />
+  <meta name="theme-color" content="#00f0ff" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <meta name="description" content="Experimental real-time FACS-inspired facial feature visualization using MediaPipe Face Mesh" />
+  <!-- Google Fonts: Inter for text, Orbitron for tech numbers/titles -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Orbitron:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Ambient background elements -->
+  <div class="ambient-glow bg-left"></div>
+  <div class="ambient-glow bg-right"></div>
+
+  <!-- ═══ Toolbar ═══ -->
+  <div class="toolbar" id="toolbar">
+    <div class="toolbar-left">
+      <span class="toolbar-brand">MicroExpr · Ψ</span>
+    </div>
+    <div class="toolbar-right">
+      <!-- History Recording -->
+      <button id="btnRecordToggle" class="tb-btn" title="Start/Stop Recording" aria-label="Start/Stop Recording">
+        <span id="recordLabel">Start Recording</span>
+      </button>
+      <!-- History -->
+      <button id="btnHistory" class="tb-btn" title="History" aria-label="Open History">History</button>
+      <!-- Export -->
+      <button id="btnExportJSON" class="tb-btn" title="Export JSON" aria-label="Export JSON">Export JSON</button>
+      <button id="btnExportCSV" class="tb-btn" title="Export CSV" aria-label="Export CSV">Export CSV</button>
+      <!-- Language Toggle -->
+      <button id="btnLang" class="tb-btn tb-lang" title="Language" aria-label="Toggle Language">中/EN</button>
+      <!-- PWA Install -->
+      <button id="btnInstall" class="tb-btn tb-install" title="Install App" aria-label="Install App" style="display:none;">⬇ Install</button>
+    </div>
+  </div>
+
+  <div class="app">
+    <aside class="research-notice" role="note">
+      <strong>实验性研究演示 / Experimental research demo.</strong>
+      输出是基于面部几何规则的启发式指标，不是身份识别、测谎、心理诊断或事实判断；请勿用于医疗、招聘、执法、教育处分等高风险决策。摄像头帧在浏览器本地处理，只有主动录制或导出时才会在本机保存分析数据。
+    </aside>
+
+    <!-- ═══ Left: Camera ═══ -->
+    <section class="camera-section">
+      <h2 class="section-title">
+        <span class="dot"></span> Face Deep Scan (78 Key Landmarks)
+        <span id="fpsDisplay" class="fps">0 FPS</span>
+      </h2>
+
+      <!-- Tech scanner wrapper -->
+      <div class="scanner-container">
+        <div class="corner top-left"></div>
+        <div class="corner top-right"></div>
+        <div class="corner bottom-left"></div>
+        <div class="corner bottom-right"></div>
+
+        <div class="canvas-wrap glass-panel">
+          <video id="webcam" autoplay playsinline></video>
+          <canvas id="overlay"></canvas>
+          <div class="scan-line"></div>
+        </div>
+      </div>
+
+      <p id="statusLine" class="status-line">Initializing...</p>
+
+      <!-- Head Pose Indicator -->
+      <div class="head-pose-panel glass-panel">
+        <h3>Head Pose Array <span class="deco-line"></span></h3>
+        <div class="pose-values">
+          <span>YAW <strong id="hpYaw">0°</strong></span>
+          <span>PITCH <strong id="hpPitch">0°</strong></span>
+          <span>ROLL <strong id="hpRoll">0°</strong></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ Middle: Expression + AUs ═══ -->
+    <section class="data-section">
+      <div class="panel expression-panel glass-panel">
+        <h3>Expression Feature Extraction <span class="deco-line"></span></h3>
+        <div id="exprList" class="expr-list"></div>
+      </div>
+
+      <!-- Expression consistency panel (heuristic; not lie detection) -->
+      <div class="panel authenticity-panel glass-panel">
+        <h3>Expression Consistency Score <span id="authOverall" class="auth-badge">—</span></h3>
+        <div class="auth-factors" id="authFactors">
+          <div class="auth-row"><span>Duchenne Marker</span><div class="bar-track"><div class="bar-fill" id="authDuchenne"></div></div></div>
+          <div class="auth-row"><span>Temporal Pattern</span><div class="bar-track"><div class="bar-fill" id="authTemporal"></div></div></div>
+          <div class="auth-row"><span>Dynamic Symmetry</span><div class="bar-track"><div class="bar-fill" id="authSymmetry"></div></div></div>
+          <div class="auth-row"><span>Hold Duration</span><div class="bar-track"><div class="bar-fill" id="authDuration"></div></div></div>
+          <div class="auth-row"><span>Muscle Conflict</span><div class="bar-track"><div class="bar-fill" id="authConflict"></div></div></div>
+          <div class="auth-row"><span>Muscle Leakage</span><div class="bar-track"><div class="bar-fill" id="authLeakage"></div></div></div>
+        </div>
+      </div>
+
+      <div class="panel au-panel glass-panel">
+        <h3>FACS Action Unit Topology <span class="deco-line"></span></h3>
+        <div id="auBars" class="au-bars"></div>
+      </div>
+    </section>
+
+    <!-- ═══ Right: Psychology + Transitions ═══ -->
+    <section class="psychology-section">
+      <div class="panel psy-panel glass-panel">
+        <h3>Experimental State Indicators (12D) <span class="deco-line"></span></h3>
+        <div id="psyDims" class="psy-dims"></div>
+      </div>
+
+      <!-- Transition Log Panel -->
+      <div class="panel transition-panel glass-panel">
+        <h3>Emotional Transition Chain <span class="deco-line"></span></h3>
+        <div id="transitionLog" class="transition-log"></div>
+      </div>
+
+      <div class="panel analysis-panel glass-panel">
+        <h3>Deep Model Inference <span class="deco-line"></span></h3>
+        <pre id="analysisText" class="analysis-text"></pre>
+      </div>
+
+      <div class="panel micro-panel glass-panel">
+        <h3>High-Freq Micro-Expression Capture <span id="blinkCount" class="blink-badge">BLINK: 0</span></h3>
+        <div id="microLog" class="micro-log"></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ═══ History Modal ═══ -->
+  <div id="historyModal" class="modal-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="historyModalTitle">
+    <div class="modal-content glass-panel">
+      <div class="modal-header">
+        <h3 id="historyModalTitle">History</h3>
+        <button id="btnCloseHistory" class="tb-btn modal-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <!-- Profile Selector -->
+        <div class="profile-bar">
+          <label id="profileLabel">Profile:</label>
+          <select id="profileSelect" class="tb-select"></select>
+          <button id="btnNewProfile" class="tb-btn tb-sm">+</button>
+          <button id="btnDeleteProfile" class="tb-btn tb-sm tb-danger">✕</button>
+        </div>
+        <!-- Trend Summary -->
+        <div id="trendSummary" class="trend-summary"></div>
+        <!-- Session List -->
+        <div id="sessionList" class="session-list"></div>
+        <!-- Actions -->
+        <div class="modal-actions">
+          <button id="btnClearHistory" class="tb-btn tb-danger">Clear Records</button>
+          <button id="btnExportHistory" class="tb-btn">Export History</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MediaPipe dependencies (must load before local scripts) -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/face_mesh.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1640029074/camera_utils.js" crossorigin="anonymous"></script>
+
+  <!-- Scripts (load order matters: i18n first for all modules) -->
+  <script src="face-config.js"></script>
+  <script src="face-i18n.js"></script>
+  <script src="face-policies.js"></script>
+  <script src="face-helpers.js"></script>
+  <script src="face-au-detector.js"></script>
+  <script src="face-expression-analyzer.js"></script>
+  <script src="face-psychology-engine.js"></script>
+  <script src="face-detector.js"></script>
+  <script src="face-export.js"></script>
+  <script src="face-history.js"></script>
+  <script src="script.js"></script>
+  <!-- Service Worker Registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('./sw.js').catch(function () {
+          /* SW registration failed — app works fine without it */
+        });
+      });
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+{
+  "name": "face-expression-vfx",
+  "version": "3.10.1",
+  "private": true,
+  "description": "微表情心理分析系统 - 基于FACS的实时面部动作单元检测与心理状态推断",
+  "scripts": {
+    "start": "npx http-server . -p 8080 -o",
+    "test": "node tests/run-tests.mjs",
+    "quality": "node scripts/quality-check.mjs",
+    "lint": "eslint *.js scripts/*.mjs tests/*.mjs",
+    "check": "npm run test && npm run lint && npm run quality",
+    "icons": "node icons/generate-icons.mjs"
+  },
+  "keywords": [
+    "face-mesh",
+    "micro-expression",
+    "FACS",
+    "action-units",
+    "psychology",
+    "mediapipe"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "eslint": "^10.9.1",
+    "globals": "^17.11.0"
+  }
+}

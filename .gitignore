@@ -1,0 +1,7 @@
+node_modules/
+.eslintcache
+coverage/
+.vscode/
+.DS_Store
+Thumbs.db
+*.log
