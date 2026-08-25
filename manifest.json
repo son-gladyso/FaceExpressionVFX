@@ -1,7 +1,7 @@
 {
-  "name": "MicroExpression Psychology — FACS Deep Analysis",
-  "short_name": "MicroExpr·Ψ",
-  "description": "Experimental real-time FACS-inspired facial feature visualization. Runs entirely in-browser.",
+  "name": "FaceVFX — Observable AU Visualization",
+  "short_name": "FaceVFX",
+  "description": "Quality-gated FACS-inspired facial action-unit visualization with uncertainty. Runs entirely in-browser.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

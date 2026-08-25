@@ -21,4 +21,4 @@ The default page loads MediaPipe scripts from jsDelivr and fonts from Google Fon
 
 ## Intended use
 
-The displayed expression, authenticity, deception, sincerity, cognitive-load, stress, and related values are unvalidated heuristic signals. They must not be treated as facts about a person or used for medical diagnosis, lie detection, identification, surveillance, employment, policing, insurance, education discipline, or other high-impact decisions.
+Version 3.11 removes psychological, truthfulness, sincerity, and diagnostic scores. Displayed values are observable geometry/movement proxies with uncertainty, not facts about a person. They must not be used for medical diagnosis, lie detection, identification, surveillance, employment, policing, insurance, education discipline, or other high-impact decisions.

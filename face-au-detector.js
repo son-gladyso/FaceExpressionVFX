@@ -90,59 +90,122 @@
    *  Accumulates neutral-face measurements over first N frames,
    *  then adjusts AU thresholds to the user's personal baseline.
    */
-  function createCalibrator(calibFrames) {
+  function _median(values) {
+    if (!values || !values.length) return 0;
+    var sorted = values.slice().sort(function (a, b) { return a - b; });
+    var mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) * 0.5;
+  }
+
+  function _mad(values, center) {
+    var deviations = [];
+    for (var i = 0; i < values.length; i++) deviations.push(Math.abs(values[i] - center));
+    return _median(deviations);
+  }
+
+  function createCalibrator(calibFrames, options) {
     calibFrames = calibFrames || 60;
-    var accum = {};
-    var count = 0;
+    options = options || {};
+    var samples = {};
+    var accepted = 0;
+    var rejected = 0;
+    var adapted = 0;
     var locked = false;
     var baseline = null;
+    var minQuality = options.minQuality == null ? 0.55 : options.minQuality;
+    var adaptQuality = options.adaptQuality == null ? 0.78 : options.adaptQuality;
+    var neutralActivityMax = options.neutralActivityMax == null ? 0.16 : options.neutralActivityMax;
+    var driftAlpha = options.driftAlpha == null ? 0.002 : options.driftAlpha;
+
+    function isOutlier(measurements) {
+      if (accepted < Math.min(12, Math.max(5, Math.floor(calibFrames * 0.25)))) return false;
+      var keys = Object.keys(measurements);
+      var violations = 0;
+      var checked = 0;
+      for (var i = 0; i < keys.length; i++) {
+        var key = keys[i];
+        var values = samples[key];
+        if (!values || values.length < 5 || typeof measurements[key] !== 'number') continue;
+        checked++;
+        var center = _median(values);
+        var scale = Math.max(_mad(values, center) * 1.4826, Math.abs(center) * 0.01, 0.0005);
+        if (Math.abs(measurements[key] - center) > scale * 6) violations++;
+      }
+      return checked > 0 && violations >= Math.max(2, Math.ceil(checked * 0.25));
+    }
+
+    function lockBaseline() {
+      baseline = {};
+      var mad = {};
+      var keys = Object.keys(samples);
+      for (var i = 0; i < keys.length; i++) {
+        var key = keys[i];
+        if (!samples[key].length) continue;
+        baseline[key] = _median(samples[key]);
+        mad[key] = _mad(samples[key], baseline[key]);
+      }
+      baseline._mad = mad;
+      locked = true;
+      samples = {};
+    }
+
+    function observe(measurements, meta) {
+      meta = meta || {};
+      var quality = meta.quality && typeof meta.quality.score === 'number' ? meta.quality.score : 1;
+      if ((meta.quality && meta.quality.action === 'pause') || quality < minQuality) {
+        rejected++;
+        return false;
+      }
+
+      if (!locked) {
+        if (isOutlier(measurements)) {
+          rejected++;
+          return false;
+        }
+        var keys = Object.keys(measurements);
+        for (var i = 0; i < keys.length; i++) {
+          var key = keys[i];
+          if (typeof measurements[key] !== 'number' || !Number.isFinite(measurements[key])) continue;
+          if (!samples[key]) samples[key] = [];
+          samples[key].push(measurements[key]);
+        }
+        accepted++;
+        if (accepted >= calibFrames) lockBaseline();
+        return true;
+      }
+
+      var activity = typeof meta.activity === 'number' ? meta.activity : Infinity;
+      if (quality < adaptQuality || activity > neutralActivityMax) return false;
+      var baselineKeys = Object.keys(measurements);
+      for (var j = 0; j < baselineKeys.length; j++) {
+        var name = baselineKeys[j];
+        var value = measurements[name];
+        if (typeof value !== 'number' || typeof baseline[name] !== 'number') continue;
+        var noise = Math.max((baseline._mad[name] || 0) * 1.4826, Math.abs(baseline[name]) * 0.005, 0.0003);
+        var residual = value - baseline[name];
+        var clipped = Math.max(-noise * 3, Math.min(noise * 3, residual));
+        baseline[name] += driftAlpha * clipped;
+        baseline._mad[name] += driftAlpha * (Math.abs(residual) - baseline._mad[name]);
+      }
+      adapted++;
+      return true;
+    }
 
     return {
       isLocked: function () { return locked; },
       getBaseline: function () { return baseline; },
-
-      /** Feed a frame's raw measurements during calibration. */
-      accumulate: function (measurements) {
-        if (locked) return;
-        var keys = Object.keys(measurements);
-        for (var i = 0; i < keys.length; i++) {
-          var k = keys[i];
-          if (typeof measurements[k] !== 'number') continue;
-          if (!accum[k]) accum[k] = [];
-          accum[k].push(measurements[k]);
-        }
-        count++;
-        if (count >= calibFrames) {
-          baseline = {};
-          var mad = {};  // Median Absolute Deviation per metric
-          for (var j = 0; j < keys.length; j++) {
-            var key = keys[j];
-            if (accum[key] && accum[key].length > 0) {
-              // Robust baseline: median (insensitive to outliers
-              // from facial movement during calibration)
-              var sorted = accum[key].slice().sort(function(a,b){return a-b;});
-              var mid = Math.floor(sorted.length / 2);
-              var median = sorted.length % 2 === 0
-                ? (sorted[mid - 1] + sorted[mid]) * 0.5
-                : sorted[mid];
-              baseline[key] = median;
-              // MAD = median(|xi - median|) for confidence bounds
-              var absDevs = [];
-              for (var m = 0; m < sorted.length; m++) {
-                absDevs.push(Math.abs(sorted[m] - median));
-              }
-              absDevs.sort(function(a,b){return a-b;});
-              var madMid = Math.floor(absDevs.length / 2);
-              mad[key] = absDevs.length % 2 === 0
-                ? (absDevs[madMid - 1] + absDevs[madMid]) * 0.5
-                : absDevs[madMid];
-            }
-          }
-          baseline._mad = mad; // attach MAD for confidence gating
-          locked = true;
-          accum = {}; // free memory
-        }
+      getStatus: function () {
+        var total = accepted + rejected;
+        return {
+          locked: locked,
+          accepted: accepted,
+          rejected: rejected,
+          adapted: adapted,
+          confidence: locked ? Math.max(0.55, Math.min(1, accepted / Math.max(calibFrames, 1) * (1 - rejected / Math.max(total, 1)))) : accepted / calibFrames * 0.55,
+        };
       },
+      observe: observe,
+      accumulate: function (measurements) { return observe(measurements, {}); },
     };
   }
 
@@ -170,7 +233,7 @@
   }
 
   /* ═══ Core AU Computation with bilateral measurements ═══ */
-  function computeAUs(lm, calibrator, headPose) {
+  function computeAUs(lm, calibrator, headPose, quality) {
     var L = cfg().LANDMARKS;
     var h = hlp();
     var d = h.dist, cl = h.clamp;
@@ -356,11 +419,11 @@
                             mouthAsymmetry * 0.3 + cheekAsymmetry * 0.2);
 
     // ── Muscle Conflict Detection ──
-    // Antagonist pairs that indicate suppression or deception
+    // Antagonist pairs that indicate concurrent opposing movements
     var conflicts = [];
     // Smile (AU12) + Brow furrow (AU4) = masked negative emotion
     if (au12 > 0.3 && au4 > 0.3) conflicts.push({ pair: 'AU12+AU4', strength: Math.min(au12, au4) });
-    // Smile (AU12) + Lip press (AU23/24) = suppressed smile or deception
+    // AU12 + AU23/AU24 = concurrent corner pull and lip compression
     if (au12 > 0.3 && (au23 > 0.3 || au24 > 0.3)) conflicts.push({ pair: 'AU12+AU23/24', strength: Math.min(au12, Math.max(au23, au24)) });
     // Brow raise (AU1/2) + Brow lower (AU4) = conflicting signals
     if ((au1 > 0.3 || au2 > 0.3) && au4 > 0.3) conflicts.push({ pair: 'AU1/2+AU4', strength: Math.min(Math.max(au1, au2), au4) });
@@ -387,21 +450,35 @@
           0, 1)
       : 0;
 
-    // ── Calibration data collection ──
-    // Feed raw baseline-relevant measurements to the calibrator
-    // during the initial frames for per-user AU threshold adaptation.
-    if (calibrator && !calibrator.isLocked()) {
-      calibrator.accumulate({
-        browInnerDist: (rBrowInnerDist + lBrowInnerDist) * 0.5,
-        browOuterDist: (rBrowOuterDist + lBrowOuterDist) * 0.5,
-        earAvg: earAvg,
-        mar: mar,
-        mouthW: mouthW,
-        lipThickness: lipThickness,
-        cheekDist: (rCheekLift + lCheekLift) * 0.5,
-        corrugatorDist: (rCorrugatorDist + lCorrugatorDist) * 0.5,
-        nasolabialDist: (rNasolabialDist + lNasolabialDist) * 0.5,
-      });
+    // ── Calibration observation ──
+    // All identity-sensitive ratios are tracked. Poor-quality and
+    // high-activity frames are rejected; high-quality neutral frames
+    // can update the locked baseline with a very slow clipped drift.
+    var calibrationMeasurements = {
+      browInnerDist: (rBrowInnerDist + lBrowInnerDist) * 0.5,
+      browOuterDist: (rBrowOuterDist + lBrowOuterDist) * 0.5,
+      earAvg: earAvg,
+      mar: mar,
+      mouthW: mouthW,
+      mouthCornerLift: (rMouthCornerLift + lMouthCornerLift) * 0.5,
+      lipHeight: lipH,
+      lipThickness: lipThickness,
+      cheekDist: (rCheekLift + lCheekLift) * 0.5,
+      mentalisLift: mentalisLift,
+      corrugatorDist: (rCorrugatorDist + lCorrugatorDist) * 0.5,
+      nasolabialDist: (rNasolabialDist + lNasolabialDist) * 0.5,
+      faceAspect: faceH / Math.max(faceW, 0.001),
+    };
+    var calibrationActivity = Math.max(
+      au1, au2, au4, au5, au6, au7, au9, au10, au12, au15,
+      au17, au20, au23, au24, au25, au26
+    );
+    if (calibrator) {
+      if (typeof calibrator.observe === 'function') {
+        calibrator.observe(calibrationMeasurements, { quality: quality, activity: calibrationActivity });
+      } else if (!calibrator.isLocked()) {
+        calibrator.accumulate(calibrationMeasurements);
+      }
     }
 
     // ── Apply per-user baseline correction (when calibrated) ──
@@ -448,6 +525,24 @@
         // Blend ratio 70/30: AU9 is core to disgust/disdain/distaste detection.
         var cal9 = _calibShift(cl, (rNasolabialDist + lNasolabialDist) * 0.5, 'nasolabialDist', -10.0, bl, madData);
         if (cal9 !== null) au9 = Math.min(1, au9 * 0.7 + cal9 * 0.3);
+        // Mouth and jaw AUs use deviations from the person's neutral
+        // geometry, reducing identity-shape leakage into motion values.
+        var cal10 = _calibShift(cl, lipThickness, 'lipThickness', -18.0, bl, madData);
+        if (cal10 !== null) au10 = au10 * 0.5 + cal10 * 0.5;
+        var cal12 = _calibShift(cl, (rMouthCornerLift + lMouthCornerLift) * 0.5, 'mouthCornerLift', 18.0, bl, madData);
+        if (cal12 !== null) au12 = au12 * 0.6 + cal12 * 0.4;
+        var cal15 = _calibShift(cl, (rMouthCornerLift + lMouthCornerLift) * 0.5, 'mouthCornerLift', -22.0, bl, madData);
+        if (cal15 !== null) au15 = au15 * 0.6 + cal15 * 0.4;
+        var cal17 = _calibShift(cl, mentalisLift, 'mentalisLift', 12.0, bl, madData);
+        if (cal17 !== null) au17 = au17 * 0.5 + cal17 * 0.5;
+        var cal23 = _calibShift(cl, lipH, 'lipHeight', -24.0, bl, madData);
+        if (cal23 !== null) au23 = au23 * 0.5 + cal23 * 0.5;
+        var cal24 = _calibShift(cl, lipThickness, 'lipThickness', -28.0, bl, madData);
+        if (cal24 !== null) au24 = au24 * 0.5 + cal24 * 0.5;
+        var cal25 = _calibShift(cl, lipH, 'lipHeight', 15.0, bl, madData);
+        if (cal25 !== null) au25 = au25 * 0.5 + cal25 * 0.5;
+        var cal26 = _calibShift(cl, mar, 'mar', 6.0, bl, madData);
+        if (cal26 !== null) au26 = au26 * 0.5 + cal26 * 0.5;
       }
     }
 

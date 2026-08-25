@@ -102,23 +102,21 @@
     if (!result) return null;
     var snap = {
       t: Date.now(),
-      expr: result.topExpr || 'neutral',
-      conf: +(result.topConf || 0).toFixed(3),
-      psy: {},
+      q: result.quality ? +(result.quality.score || 0).toFixed(3) : 0,
+      qa: result.quality ? result.quality.action : 'unknown',
+      ts: result.temporal ? result.temporal.label : 'neutral',
+      tu: result.temporal ? +(result.temporal.entropy || 0).toFixed(3) : 1,
+      obs: {},
     };
-    // Psychology dimensions (rounded)
-    if (result.psychology) {
+    // Observable movement summaries (rounded)
+    if (result.observables && result.observables.values) {
       var CFG = global.FaceConfig;
       if (CFG) {
-        var keys = CFG.PSYCHOLOGY_KEYS;
+        var keys = CFG.OBSERVABLE_KEYS;
         for (var i = 0; i < keys.length; i++) {
-          snap.psy[keys[i]] = +((result.psychology[keys[i]] || 0).toFixed(3));
+          snap.obs[keys[i]] = +((result.observables.values[keys[i]] || 0).toFixed(3));
         }
       }
-    }
-    // Authenticity
-    if (result.authenticity) {
-      snap.auth = +(result.authenticity.overall || 0).toFixed(3);
     }
     // Blink
     if (result.blinkAnalysis) {
@@ -139,15 +137,15 @@
   function computeTrend(sessions) {
     if (!sessions || sessions.length === 0) return null;
     var CFG = global.FaceConfig;
-    var psyKeys = CFG ? CFG.PSYCHOLOGY_KEYS : [];
+    var observableKeys = CFG ? CFG.OBSERVABLE_KEYS : [];
 
     var trend = {
       sessionCount: sessions.length,
       totalFrames: 0,
       totalDurationMs: 0,
-      avgPsy: {},
+      avgObservables: {},
       trendDirection: {},  // per-dimension: 'up' | 'down' | 'stable'
-      topExpressions: {},
+      quality: { total: 0, paused: 0, downweighted: 0 },
     };
 
     // Aggregate per-session averages
@@ -159,43 +157,41 @@
       trend.totalDurationMs += (sess.endTime || sess.startTime) - sess.startTime;
 
       var sessAvg = {};
-      for (var ki = 0; ki < psyKeys.length; ki++) sessAvg[psyKeys[ki]] = 0;
+      for (var ki = 0; ki < observableKeys.length; ki++) sessAvg[observableKeys[ki]] = 0;
 
       for (var sn = 0; sn < snaps.length; sn++) {
         var snap = snaps[sn];
-        // Expression frequency
-        if (snap.expr) {
-          trend.topExpressions[snap.expr] = (trend.topExpressions[snap.expr] || 0) + 1;
-        }
-        // Psychology accumulation
-        if (snap.psy) {
-          for (var pk = 0; pk < psyKeys.length; pk++) {
-            sessAvg[psyKeys[pk]] += (snap.psy[psyKeys[pk]] || 0);
+        trend.quality.total += snap.q || 0;
+        if (snap.qa === 'pause') trend.quality.paused++;
+        if (snap.qa === 'downweight') trend.quality.downweighted++;
+        if (snap.obs) {
+          for (var pk = 0; pk < observableKeys.length; pk++) {
+            sessAvg[observableKeys[pk]] += (snap.obs[observableKeys[pk]] || 0);
           }
         }
       }
       // Normalize
       if (snaps.length > 0) {
-        for (var nk = 0; nk < psyKeys.length; nk++) {
-          sessAvg[psyKeys[nk]] /= snaps.length;
+        for (var nk = 0; nk < observableKeys.length; nk++) {
+          sessAvg[observableKeys[nk]] /= snaps.length;
         }
       }
       sessionAvgs.push(sessAvg);
     }
 
     // Overall averages
-    for (var ak = 0; ak < psyKeys.length; ak++) {
-      var k = psyKeys[ak];
+    for (var ak = 0; ak < observableKeys.length; ak++) {
+      var k = observableKeys[ak];
       var sum = 0;
       for (var sa = 0; sa < sessionAvgs.length; sa++) sum += sessionAvgs[sa][k];
-      trend.avgPsy[k] = sessionAvgs.length > 0 ? sum / sessionAvgs.length : 0;
+      trend.avgObservables[k] = sessionAvgs.length > 0 ? sum / sessionAvgs.length : 0;
     }
 
     // Trend direction (compare first half vs second half)
     if (sessionAvgs.length >= 2) {
       var mid = Math.floor(sessionAvgs.length / 2);
-      for (var tk = 0; tk < psyKeys.length; tk++) {
-        var key = psyKeys[tk];
+      for (var tk = 0; tk < observableKeys.length; tk++) {
+        var key = observableKeys[tk];
         var firstHalf = 0, secondHalf = 0;
         for (var fh = 0; fh < mid; fh++) firstHalf += sessionAvgs[fh][key];
         firstHalf /= mid;

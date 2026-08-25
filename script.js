@@ -1,7 +1,6 @@
 /* ═══════════════════════════════════════════════════════════════
- *  script.js  –  Main Application v3.10
- *  78-point mesh rendering, full pipeline integration,
- *  authenticity + transition UI binding,
+ *  script.js  –  Main Application v3.11
+ *  78-point mesh rendering, quality-gated observable pipeline,
  *  i18n, data export, history recording,
  *  PWA install prompt, mobile camera adaptation
  * ═══════════════════════════════════════════════════════════════ */
@@ -16,8 +15,7 @@
   var HIST    = window.FaceHistory;
 
   function t(k) { return I18n ? I18n.t(k) : k; }
-  function el(n) { return I18n ? I18n.exprLabel(n) : n; }
-  function pl(k) { return I18n ? I18n.psyLabel(k) : k; }
+  function ql(k) { return I18n ? I18n.observableLabel(k) : k; }
 
   /* ── DOM refs ── */
   var video       = document.getElementById('webcam');
@@ -25,6 +23,7 @@
   var ctx         = canvas.getContext('2d');
   var statusLine  = document.getElementById('statusLine');
   var fpsDisplay  = document.getElementById('fpsDisplay');
+  var qualityDisplay = document.getElementById('qualityDisplay');
   var exprListEl  = document.getElementById('exprList');
   var auBarsEl    = document.getElementById('auBars');
   var psyDimsEl   = document.getElementById('psyDims');
@@ -77,6 +76,7 @@
   var _qualityMode = POL.resolveQualityMode(navigator);
   var _isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
   var _deferredInstallPrompt = null;
+  var _frameQuality = window.FaceQuality.createAnalyzer({ sampleEvery: 5 });
 
   /* ── PWA Install Prompt ── */
   var btnInstall = document.getElementById('btnInstall');
@@ -103,8 +103,8 @@
   /* ── Cached DOM refs for per-frame updates (populated by build*Rows) ── */
   var auFillEls = {};   // key → element
   var auValEls  = {};   // key → element
-  var psyFillEls = {};  // key → element
-  var psyValEls  = {};  // key → element
+  var psyFillEls = {};  // observable key → element
+  var psyValEls  = {};  // observable key → element
 
   /* ── Change-detection caches (avoid innerHTML reparse when unchanged) ── */
   var _lastExprHTML  = '';
@@ -131,16 +131,16 @@
     }
   }
 
-  /* ═══ Build Static Psychology Rows ═══ */
+  /* ═══ Build Static Observable Rows ═══ */
   function buildPsyRows() {
-    var keys = CFG.PSYCHOLOGY_KEYS;
+    var keys = CFG.OBSERVABLE_KEYS;
     psyDimsEl.innerHTML = '';
     for (var i = 0; i < keys.length; i++) {
       var k = keys[i];
       var row = document.createElement('div');
       row.className = 'psy-row';
       row.innerHTML =
-        '<span class="psy-label" data-psy="' + k + '">' + pl(k) + '</span>' +
+        '<span class="psy-label" data-psy="' + k + '">' + ql(k) + '</span>' +
         '<div class="psy-track"><div class="psy-fill" data-dim="' + k + '" id="psyFill_' + k + '"></div></div>' +
         '<span class="psy-val" id="psyVal_' + k + '">0</span>';
       psyDimsEl.appendChild(row);
@@ -252,30 +252,44 @@
     if (!result) return;
     _lastResult = result;  // cache for export
 
+    if (qualityDisplay && result.quality) {
+      qualityDisplay.textContent = 'Q ' + Math.round(result.quality.score * 100) + '% · ' + result.quality.action;
+      qualityDisplay.className = 'fps quality-' + result.quality.action;
+    }
+
+    if (result.paused) {
+      analysisEl.textContent = result.analysisText || '';
+      statusLine.textContent = t('statusQualityPaused');
+      return;
+    }
+
     // ── Feed history if recording ──
     if (_history && _history.isRecording()) {
       _history.addSnapshot(result);
     }
 
-    // ── Expression list ──
+    // ── Strongest observable AU activations ──
     var exprHTML = '';
-    var exprs = result.expressions;
-    var shown = Math.min(exprs.length, 8);
+    var rankedAUs = [];
+    for (var rk = 0; rk < CFG.AU_LIST.length; rk++) {
+      var re = result.auEstimates[CFG.AU_LIST[rk]];
+      if (re) rankedAUs.push({ name: CFG.AU_LIST[rk], estimate: re });
+    }
+    rankedAUs.sort(function (a, b) { return b.estimate.value - a.estimate.value; });
+    var shown = Math.min(rankedAUs.length, 8);
     for (var i = 0; i < shown; i++) {
-      var e = exprs[i];
-      var label = el(e.name);
-      var pct = (e.confidence * 100).toFixed(0);
+      var e = rankedAUs[i];
+      var estimate = e.estimate;
+      var label = e.name.toUpperCase() + ' · ' + (CFG.AU_NAMES[e.name] || '');
+      var pct = (estimate.value * 100).toFixed(0);
       var isTop = i === 0 ? ' top-expr' : '';
       exprHTML +=
         '<div class="expr-item' + isTop + '">' +
           '<span class="expr-name">' + label + '</span>' +
           '<div class="expr-bar"><div class="expr-fill" style="width:' + pct + '%"></div></div>' +
-          '<span class="expr-pct">' + pct + '%</span>' +
+          '<span class="expr-pct">' + estimate.lower.toFixed(2) + '–' + estimate.upper.toFixed(2) +
+          ' / ' + Math.round(estimate.confidence * 100) + '%</span>' +
         '</div>';
-    }
-    if (shown === 0) {
-      exprHTML = '<div class="expr-item"><span class="expr-name">' +
-        el('neutral') + '</span></div>';
     }
     if (exprHTML !== _lastExprHTML) {
       exprListEl.innerHTML = exprHTML;
@@ -287,46 +301,48 @@
     for (var ai = 0; ai < auList.length; ai++) {
       var ak = auList[ai];
       var av = result.aus[ak] || 0;
+      var ae = result.auEstimates[ak];
       var fillEl = auFillEls[ak];
       var valEl  = auValEls[ak];
       if (fillEl) fillEl.style.width = (av * 100).toFixed(0) + '%';
-      if (valEl)  valEl.textContent = av.toFixed(2);
+      if (valEl && ae) {
+        valEl.textContent = av.toFixed(2) + ' [' + ae.lower.toFixed(2) + '–' + ae.upper.toFixed(2) + ']';
+        valEl.title = 'confidence ' + Math.round(ae.confidence * 100) + '%';
+      }
     }
 
-    // ── Psychology dimensions (use cached refs) ──
-    var psyKeys = CFG.PSYCHOLOGY_KEYS;
+    // ── Observable movement dimensions ──
+    var psyKeys = CFG.OBSERVABLE_KEYS;
     for (var pi = 0; pi < psyKeys.length; pi++) {
       var pk = psyKeys[pi];
-      var pv = result.psychology[pk] || 0;
+      var oi = result.observables.intervals[pk];
+      var pv = oi ? oi.value : 0;
       var pfill = psyFillEls[pk];
       var pval  = psyValEls[pk];
       if (pfill) pfill.style.width = (pv * 100).toFixed(0) + '%';
-      if (pval)  pval.textContent = (pv * 100).toFixed(0);
+      if (pval && oi) pval.textContent = oi.lower.toFixed(2) + '–' + oi.upper.toFixed(2);
     }
 
-    // ── Authenticity ──
-    if (result.authenticity) {
-      var authVal = result.authenticity.overall;
-      var authLabel, authClass;
-      if (authVal > 0.65) { authLabel = t('authGenuine') + ' ' + (authVal * 100).toFixed(0) + '%'; authClass = 'genuine'; }
-      else if (authVal > 0.35) { authLabel = t('authSuspect') + ' ' + (authVal * 100).toFixed(0) + '%'; authClass = 'suspect'; }
-      else { authLabel = t('authFake') + ' ' + (authVal * 100).toFixed(0) + '%'; authClass = 'fake'; }
-      authOverallEl.textContent = authLabel;
-      authOverallEl.className = 'auth-badge ' + authClass;
-
-      // Factor bars
-      if (result.authenticity.factors) {
-        var factors = result.authenticity.factors;
-        var factorKeys = ['duchenne', 'temporal', 'symmetry', 'duration', 'muscleConflict', 'leakage'];
-        for (var fi = 0; fi < factorKeys.length; fi++) {
-          var fk = factorKeys[fi];
-          var fv = factors[fk] || 0;
-          var barEl = authBarEls[fk];
-          if (barEl) {
-            barEl.style.width = (fv * 100).toFixed(0) + '%';
-            barEl.className = 'bar-fill ' + (fv > 0.6 ? 'high' : fv > 0.3 ? 'mid' : 'low');
-          }
-        }
+    // ── Quality and Bayesian temporal state ──
+    if (result.temporal) {
+      authOverallEl.textContent = result.temporal.label.toUpperCase() + ' · ' +
+        Math.round(result.temporal.confidence * 100) + '%';
+      authOverallEl.className = 'auth-badge suspect';
+      var components = result.quality.components || {};
+      var factorValues = {
+        duchenne: components.landmarks || 0,
+        temporal: 1 - result.temporal.entropy,
+        symmetry: components.pose || 0,
+        duration: Math.min(1, result.temporal.durationMs / 1000),
+        muscleConflict: components.lighting == null ? 0.5 : components.lighting,
+        leakage: components.sharpness == null ? 0.5 : components.sharpness,
+      };
+      var factorKeys = Object.keys(authBarEls);
+      for (var fi = 0; fi < factorKeys.length; fi++) {
+        var fk = factorKeys[fi];
+        var fv = factorValues[fk] || 0;
+        authBarEls[fk].style.width = Math.round(fv * 100) + '%';
+        authBarEls[fk].className = 'bar-fill ' + (fv > 0.6 ? 'high' : fv > 0.3 ? 'mid' : 'low');
       }
     }
 
@@ -337,29 +353,12 @@
       hpRollEl.textContent  = result.headPose.roll.toFixed(1) + '°';
     }
 
-    // ── Transition Log ──
-    if (result.transitionLog && result.transitionLog.length > 0) {
-      var transHTML = '';
-      var tLog = result.transitionLog;
-      var tStart = Math.max(0, tLog.length - 8);
-      for (var ti = tLog.length - 1; ti >= tStart; ti--) {
-        var tt = tLog[ti];
-        var fromLabel = el(tt.from);
-        var toLabel = el(tt.to);
-        transHTML +=
-          '<div class="trans-item ' + tt.type + '">' +
-            '<span>' + fromLabel + '</span>' +
-            '<span class="trans-arrow">→</span>' +
-            '<span>' + toLabel + '</span>' +
-            '<span class="trans-type">[' + tt.type + ' ' + tt.durationMs + 'ms]</span>' +
-            (tt.significance ? '<span class="trans-sig">' + tt.significance + '</span>' : '') +
-          '</div>';
-      }
-      if (transHTML !== _lastTransHTML) {
-        transLogEl.innerHTML = transHTML;
-        _lastTransHTML = transHTML;
-      }
+    var qualityHTML = '';
+    var flags = result.quality.reasons.length ? result.quality.reasons : ['none'];
+    for (var qi = 0; qi < flags.length; qi++) {
+      qualityHTML += '<div class="trans-item"><span>' + flags[qi] + '</span></div>';
     }
+    transLogEl.innerHTML = qualityHTML;
 
     // ── Analysis text ──
     analysisEl.textContent = result.analysisText || '';
@@ -367,25 +366,9 @@
     // ── Blink count ──
     blinkEl.textContent = t('blink') + ': ' + (result.blinkCount || 0);
 
-    // ── Micro-expression log ──
-    if (result.microLog && result.microLog.length > 0) {
-      var mHTML = '';
-      var mStart = Math.max(0, result.microLog.length - 10);
-      for (var mi = result.microLog.length - 1; mi >= mStart; mi--) {
-        var m = result.microLog[mi];
-        var mLabel = el(m.expression);
-        mHTML +=
-          '<div class="micro-item">' +
-            '<span class="micro-name">' + mLabel + '</span>' +
-            '<span class="micro-dur">' + m.durationMs + 'ms</span>' +
-            (m.isLeakage ? '<span class="micro-leak">[' + t('leakage') + ']</span>' : '') +
-          '</div>';
-      }
-      if (mHTML !== _lastMicroHTML) {
-        microLogEl.innerHTML = mHTML;
-        _lastMicroHTML = mHTML;
-      }
-    }
+    microLogEl.textContent = (result.calibrated ? t('calibrationLocked') : t('calibrationCollecting')) +
+      ' · ' + result.inferenceSource +
+      (result.modelMetadata ? ' · ' + result.modelMetadata.name + ' ' + result.modelMetadata.version : '');
   }
 
   /* ═══ FPS Counter ═══ */
@@ -413,12 +396,19 @@
     // Draw mesh
     drawMesh(landmarks);
 
-    // Process pipeline
+    // Quality gate is computed before AU inference so unusable frames never
+    // update calibration or temporal state.
     if (!pipeline) pipeline = window.FaceDetector.createPipeline();
-    var result = pipeline.process(landmarks);
+    var headPose = window.FaceAUDetector.computeHeadPose(landmarks);
+    var quality = _frameQuality.analyze(results.image || video, landmarks, headPose);
+    var result = pipeline.process(landmarks, {
+      quality: quality,
+      headPose: headPose,
+      now: Date.now(),
+    });
     if (result) {
       updateDashboard(result);
-      statusLine.textContent = t('statusOnline');
+      if (!result.paused) statusLine.textContent = t('statusOnline');
     }
 
     updateFPS();
@@ -438,11 +428,16 @@
     if (titles[0]) {
       titles[0].innerHTML =
         '<span class="dot"></span> ' + t('cameraTitle') +
+        ' <span id="qualityDisplay" class="fps">' +
+        (document.getElementById('qualityDisplay') ?
+          document.getElementById('qualityDisplay').textContent : 'Q —') +
+        '</span>' +
         ' <span id="fpsDisplay" class="fps">' +
         (document.getElementById('fpsDisplay') ?
           document.getElementById('fpsDisplay').textContent : '0 FPS') +
         '</span>';
       fpsDisplay = document.getElementById('fpsDisplay');
+      qualityDisplay = document.getElementById('qualityDisplay');
     }
     // Panel titles
     var panelTitles = {
@@ -505,11 +500,11 @@
     if (btnInstall && btnInstall.style.display !== 'none') {
       btnInstall.textContent = t('installApp');
     }
-    // Rebuild psy labels
+    // Rebuild observable labels
     var psyLabels = document.querySelectorAll('.psy-label[data-psy]');
     for (var pi = 0; pi < psyLabels.length; pi++) {
       var key = psyLabels[pi].getAttribute('data-psy');
-      if (key) psyLabels[pi].textContent = pl(key);
+      if (key) psyLabels[pi].textContent = ql(key);
     }
     // Force re-render of cached HTML
     _lastExprHTML = '';
@@ -593,15 +588,15 @@
         var tHTML = '<div class="trend-label">' + t('historyTrend') +
           ' (' + trend.sessionCount + ' ' + t('historySession') +
           ', ' + trend.totalFrames + ' ' + t('historyFrames') + ')</div>';
-        var psyKeys = CFG.PSYCHOLOGY_KEYS;
+        var psyKeys = CFG.OBSERVABLE_KEYS;
         for (var tk = 0; tk < psyKeys.length; tk++) {
           var k = psyKeys[tk];
           var dir = trend.trendDirection[k] || 'stable';
           var dirText = dir === 'up' ? t('historyTrendUp')
             : dir === 'down' ? t('historyTrendDown') : t('historyTrendStable');
           var dirClass = 'trend-' + dir;
-          tHTML += '<div>' + pl(k) + ': <span class="trend-val">' +
-            (trend.avgPsy[k] * 100).toFixed(0) + '%</span> ' +
+          tHTML += '<div>' + ql(k) + ': <span class="trend-val">' +
+            (trend.avgObservables[k] * 100).toFixed(0) + '%</span> ' +
             '<span class="' + dirClass + '">' + dirText + '</span></div>';
         }
         trendSummary.innerHTML = tHTML;

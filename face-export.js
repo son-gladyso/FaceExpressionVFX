@@ -1,242 +1,169 @@
-/* ═══════════════════════════════════════════════════════════════
- *  face-export.js  –  Data Export Module
- *  Exports analysis results as JSON or CSV via browser download.
- *  Usage:  FaceExport.downloadJSON(result)
- *          FaceExport.downloadCSV(result)
- *          FaceExport.downloadHistoryJSON(sessions)
- * ═══════════════════════════════════════════════════════════════ */
+/* FaceVFX v3.11 observable-only JSON/CSV export. */
 (function (global) {
   'use strict';
 
-  /* ═══ Timestamp Formatter ═══ */
   function fmtTime(date) {
     var d = date || new Date();
-    var pad = function (n) { return n < 10 ? '0' + n : '' + n; };
-    return d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) +
-      '_' + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds());
+    var pad = function (n) { return n < 10 ? '0' + n : String(n); };
+    return d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '_' +
+      pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds());
   }
 
-  /* ═══ Trigger Browser Download ═══ */
   function triggerDownload(content, filename, mime) {
     var blob = new Blob([content], { type: mime });
     var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    var anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
     setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
   }
 
-  /* ═══ Flatten Pipeline Result for CSV ═══ */
   function flattenResult(result) {
     if (!result) return {};
-    var flat = {};
-    flat.timestamp = new Date().toISOString();
-    flat.topExpression = result.topExpr || '';
-    flat.topConfidence = result.topConf || 0;
-
-    // AUs
+    var flat = {
+      timestamp: new Date().toISOString(),
+      schemaVersion: result.schemaVersion || '3.11.0',
+      paused: result.paused ? 1 : 0,
+      quality_score: result.quality ? result.quality.score.toFixed(4) : '',
+      quality_action: result.quality ? result.quality.action : '',
+      quality_flags: result.quality ? result.quality.reasons.join('|') : '',
+      temporal_state: result.temporal ? result.temporal.label : '',
+      temporal_confidence: result.temporal ? result.temporal.confidence.toFixed(4) : '',
+      temporal_uncertainty: result.temporal ? result.temporal.entropy.toFixed(4) : '',
+      inference_source: result.inferenceSource || 'rules',
+      calibrated: result.calibrated ? 1 : 0,
+    };
     var CFG = global.FaceConfig;
-    if (CFG && result.aus) {
-      var auList = CFG.AU_LIST;
-      for (var i = 0; i < auList.length; i++) {
-        flat['au_' + auList[i]] = (result.aus[auList[i]] || 0).toFixed(4);
+    if (CFG && result.auEstimates) {
+      for (var i = 0; i < CFG.AU_LIST.length; i++) {
+        var key = CFG.AU_LIST[i];
+        var estimate = result.auEstimates[key];
+        if (!estimate) continue;
+        flat[key + '_value'] = estimate.value.toFixed(4);
+        flat[key + '_lower'] = estimate.lower.toFixed(4);
+        flat[key + '_upper'] = estimate.upper.toFixed(4);
+        flat[key + '_confidence'] = estimate.confidence.toFixed(4);
       }
     }
-
-    // Psychology dimensions
-    if (CFG && result.psychology) {
-      var psyKeys = CFG.PSYCHOLOGY_KEYS;
-      for (var p = 0; p < psyKeys.length; p++) {
-        flat['psy_' + psyKeys[p]] = (result.psychology[psyKeys[p]] || 0).toFixed(4);
+    if (CFG && result.observables) {
+      for (var o = 0; o < CFG.OBSERVABLE_KEYS.length; o++) {
+        var observable = CFG.OBSERVABLE_KEYS[o];
+        var interval = result.observables.intervals[observable];
+        if (!interval) continue;
+        flat['observable_' + observable] = interval.value.toFixed(4);
+        flat['observable_' + observable + '_lower'] = interval.lower.toFixed(4);
+        flat['observable_' + observable + '_upper'] = interval.upper.toFixed(4);
+        flat['observable_' + observable + '_confidence'] = interval.confidence.toFixed(4);
       }
     }
-
-    // Authenticity
-    if (result.authenticity) {
-      flat.authenticity_overall = (result.authenticity.overall || 0).toFixed(4);
-      if (result.authenticity.factors) {
-        var fKeys = ['duchenne', 'temporal', 'symmetry', 'duration', 'muscleConflict', 'leakage'];
-        for (var f = 0; f < fKeys.length; f++) {
-          flat['auth_' + fKeys[f]] = (result.authenticity.factors[fKeys[f]] || 0).toFixed(4);
-        }
-      }
-    }
-
-    // Head pose
     if (result.headPose) {
       flat.headPose_yaw = result.headPose.yaw.toFixed(2);
       flat.headPose_pitch = result.headPose.pitch.toFixed(2);
       flat.headPose_roll = result.headPose.roll.toFixed(2);
     }
-
-    // Blink
     flat.blinkCount = result.blinkCount || 0;
-    if (result.blinkAnalysis) {
-      flat.blinkRate = (result.blinkAnalysis.rate || 0).toFixed(2);
-      flat.perclos = (result.blinkAnalysis.perclos || 0).toFixed(4);
-    }
-
-    flat.calibrated = result.calibrated ? 1 : 0;
-
     return flat;
   }
 
-  /* ═══ Build CSV String from Flat Objects ═══ */
   function buildCSV(rows) {
     if (!rows || rows.length === 0) return '';
     var keys = Object.keys(rows[0]);
     var lines = [keys.join(',')];
     for (var i = 0; i < rows.length; i++) {
-      var vals = [];
-      for (var k = 0; k < keys.length; k++) {
-        var v = rows[i][keys[k]];
-        if (v === undefined || v === null) v = '';
-        // Escape commas / quotes
-        var s = String(v);
-        if (s.indexOf(',') >= 0 || s.indexOf('"') >= 0 || s.indexOf('\n') >= 0) {
-          s = '"' + s.replace(/"/g, '""') + '"';
-        }
-        vals.push(s);
+      var values = [];
+      for (var j = 0; j < keys.length; j++) {
+        var value = rows[i][keys[j]];
+        var text = value == null ? '' : String(value);
+        if (/[",\n]/.test(text)) text = '"' + text.replace(/"/g, '""') + '"';
+        values.push(text);
       }
-      lines.push(vals.join(','));
+      lines.push(values.join(','));
     }
     return lines.join('\n');
   }
 
-  /* ═══ Snapshot: build a clean export object from current result ═══ */
   function buildSnapshot(result) {
     if (!result) return null;
     return {
       timestamp: new Date().toISOString(),
-      topExpression: result.topExpr,
-      topConfidence: result.topConf,
-      expressions: result.expressions ? result.expressions.slice(0, 8) : [],
-      aus: result.aus ? Object.assign({}, result.aus) : {},
-      psychology: result.psychology ? Object.assign({}, result.psychology) : {},
-      authenticity: result.authenticity ? {
-        overall: result.authenticity.overall,
-        factors: result.authenticity.factors ?
-          Object.assign({}, result.authenticity.factors) : {},
-      } : null,
-      headPose: result.headPose ? {
-        yaw: result.headPose.yaw,
-        pitch: result.headPose.pitch,
-        roll: result.headPose.roll,
-      } : null,
+      schemaVersion: result.schemaVersion || '3.11.0',
+      notice: 'Observable facial geometry estimates only; not identity, intent, truthfulness, or diagnosis.',
+      paused: Boolean(result.paused),
+      quality: result.quality || null,
+      calibration: result.calibration || null,
+      auEstimates: result.auEstimates || {},
+      observables: result.observables || null,
+      temporal: result.temporal || null,
+      headPose: result.headPose || null,
       blinkCount: result.blinkCount || 0,
-      blinkAnalysis: result.blinkAnalysis ? {
-        rate: result.blinkAnalysis.rate,
-        perclos: result.blinkAnalysis.perclos,
-      } : null,
-      calibrated: !!result.calibrated,
+      inference: {
+        source: result.inferenceSource || 'rules',
+        modelWeight: result.modelWeight || 0,
+        modelMetadata: result.modelMetadata || null,
+      },
     };
   }
 
-  /* ═══ Public API ═══ */
-
-  /** Download current result snapshot as JSON */
-  function downloadJSON(result) {
-    var snapshot = buildSnapshot(result);
-    if (!snapshot) return;
-    var json = JSON.stringify(snapshot, null, 2);
-    triggerDownload(json, 'face-analysis_' + fmtTime() + '.json', 'application/json');
-  }
-
-  /** Download current result snapshot as CSV (single row) */
-  function downloadCSV(result) {
-    if (!result) return;
-    var flat = flattenResult(result);
-    var csv = buildCSV([flat]);
-    triggerDownload(csv, 'face-analysis_' + fmtTime() + '.csv', 'text/csv');
-  }
-
-  /** Download history sessions array as JSON */
-  function downloadHistoryJSON(sessions, profileName) {
-    if (!sessions || sessions.length === 0) return;
-    var data = {
-      exportTime: new Date().toISOString(),
-      profile: profileName || 'unknown',
-      sessionCount: sessions.length,
-      sessions: sessions,
+  function flattenLightSnapshot(snapshot) {
+    if (!snapshot) return {};
+    var flat = {
+      timestamp: snapshot.t ? new Date(snapshot.t).toISOString() : '',
+      quality_score: snapshot.q == null ? '' : Number(snapshot.q).toFixed(4),
+      quality_action: snapshot.qa || '',
+      temporal_state: snapshot.ts || '',
+      temporal_uncertainty: snapshot.tu == null ? '' : Number(snapshot.tu).toFixed(4),
     };
-    var json = JSON.stringify(data, null, 2);
-    var name = profileName ? profileName.replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g, '_') : 'history';
-    triggerDownload(json, 'face-history_' + name + '_' + fmtTime() + '.json',
-      'application/json');
-  }
-
-  /* ═══ Flatten Light Snapshot for History CSV ═══
-   *  buildLightSnapshot stores abbreviated field names
-   *  (t, expr, conf, psy, auth, blinkRate, hp) to save storage.
-   *  This function maps them back to full CSV column names.
-   */
-  function flattenLightSnapshot(snap) {
-    if (!snap) return {};
-    var flat = {};
-    flat.timestamp = snap.t ? new Date(snap.t).toISOString() : '';
-    flat.topExpression = snap.expr || '';
-    flat.topConfidence = (snap.conf || 0).toFixed(4);
-
-    // Psychology dimensions
     var CFG = global.FaceConfig;
-    if (CFG && snap.psy) {
-      var psyKeys = CFG.PSYCHOLOGY_KEYS;
-      for (var p = 0; p < psyKeys.length; p++) {
-        flat['psy_' + psyKeys[p]] = (snap.psy[psyKeys[p]] || 0).toFixed(4);
+    if (CFG && snapshot.obs) {
+      for (var i = 0; i < CFG.OBSERVABLE_KEYS.length; i++) {
+        var key = CFG.OBSERVABLE_KEYS[i];
+        flat['observable_' + key] = Number(snapshot.obs[key] || 0).toFixed(4);
       }
     }
-
-    // Authenticity
-    if (typeof snap.auth === 'number') {
-      flat.authenticity_overall = snap.auth.toFixed(4);
+    if (snapshot.hp) {
+      flat.headPose_yaw = Number(snapshot.hp.y || 0).toFixed(2);
+      flat.headPose_pitch = Number(snapshot.hp.p || 0).toFixed(2);
+      flat.headPose_roll = Number(snapshot.hp.r || 0).toFixed(2);
     }
-
-    // Blink rate
-    if (typeof snap.blinkRate === 'number') {
-      flat.blinkRate = snap.blinkRate.toFixed(2);
-    }
-
-    // Head pose (abbreviated fields: y/p/r)
-    if (snap.hp) {
-      flat.headPose_yaw   = (snap.hp.y || 0).toFixed(2);
-      flat.headPose_pitch = (snap.hp.p || 0).toFixed(2);
-      flat.headPose_roll  = (snap.hp.r || 0).toFixed(2);
-    }
-
     return flat;
   }
 
-  /** Download history sessions as CSV (one row per snapshot) */
-  function downloadHistoryCSV(sessions, profileName) {
-    if (!sessions || sessions.length === 0) return;
-    var allRows = [];
-    for (var si = 0; si < sessions.length; si++) {
-      var sess = sessions[si];
-      var snaps = sess.snapshots || [];
-      for (var sn = 0; sn < snaps.length; sn++) {
-        var row = flattenLightSnapshot(snaps[sn]);
-        row.sessionId = sess.id || si;
-        row.sessionStart = sess.startTime || '';
-        allRows.push(row);
+  function downloadJSON(result) {
+    triggerDownload(JSON.stringify(buildSnapshot(result), null, 2),
+      'face-observables_' + fmtTime() + '.json', 'application/json');
+  }
+  function downloadCSV(result) {
+    triggerDownload(buildCSV([flattenResult(result)]),
+      'face-observables_' + fmtTime() + '.csv', 'text/csv');
+  }
+  function downloadHistoryJSON(sessions, profileName) {
+    triggerDownload(JSON.stringify({
+      exportTime: new Date().toISOString(), profile: profileName || 'unknown', sessions: sessions || [],
+    }, null, 2), 'face-history_' + fmtTime() + '.json', 'application/json');
+  }
+  function downloadHistoryCSV(sessions) {
+    var rows = [];
+    for (var i = 0; i < (sessions || []).length; i++) {
+      for (var j = 0; j < (sessions[i].snapshots || []).length; j++) {
+        var row = flattenLightSnapshot(sessions[i].snapshots[j]);
+        row.sessionId = sessions[i].id || i;
+        rows.push(row);
       }
     }
-    if (allRows.length === 0) return;
-    var csv = buildCSV(allRows);
-    var name = profileName ? profileName.replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g, '_') : 'history';
-    triggerDownload(csv, 'face-history_' + name + '_' + fmtTime() + '.csv', 'text/csv');
+    if (rows.length) triggerDownload(buildCSV(rows), 'face-history_' + fmtTime() + '.csv', 'text/csv');
   }
 
   global.FaceExport = Object.freeze({
-    buildSnapshot:          buildSnapshot,
-    flattenResult:          flattenResult,
-    flattenLightSnapshot:   flattenLightSnapshot,
-    buildCSV:               buildCSV,
-    downloadJSON:           downloadJSON,
-    downloadCSV:            downloadCSV,
-    downloadHistoryJSON:    downloadHistoryJSON,
-    downloadHistoryCSV:     downloadHistoryCSV,
+    buildSnapshot: buildSnapshot,
+    flattenResult: flattenResult,
+    flattenLightSnapshot: flattenLightSnapshot,
+    buildCSV: buildCSV,
+    downloadJSON: downloadJSON,
+    downloadCSV: downloadCSV,
+    downloadHistoryJSON: downloadHistoryJSON,
+    downloadHistoryCSV: downloadHistoryCSV,
   });
 })(typeof window !== 'undefined' ? window : globalThis);

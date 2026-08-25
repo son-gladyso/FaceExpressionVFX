@@ -1,14 +1,15 @@
 {
   "name": "face-expression-vfx",
-  "version": "3.10.1",
+  "version": "3.11.0",
   "private": true,
-  "description": "微表情心理分析系统 - 基于FACS的实时面部动作单元检测与心理状态推断",
+  "description": "Privacy-first, quality-gated FACS-inspired facial action unit visualization with uncertainty",
   "scripts": {
     "start": "npx http-server . -p 8080 -o",
     "test": "node tests/run-tests.mjs",
+    "evaluate": "node scripts/evaluate-au.mjs evaluation/fixtures/synthetic-au-eval.json",
     "quality": "node scripts/quality-check.mjs",
     "lint": "eslint *.js scripts/*.mjs tests/*.mjs",
-    "check": "npm run test && npm run lint && npm run quality",
+    "check": "npm run test && npm run evaluate && npm run lint && npm run quality",
     "icons": "node icons/generate-icons.mjs"
   },
   "keywords": [
@@ -16,7 +17,7 @@
     "micro-expression",
     "FACS",
     "action-units",
-    "psychology",
+    "uncertainty",
     "mediapipe"
   ],
   "license": "MIT",

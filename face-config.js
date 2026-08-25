@@ -157,7 +157,7 @@
       interest:        'Interest / Curiosity',
       pleasure:        'Pleasure',
       suppression:     'Emotion Suppression',
-      duping_delight:  'Duping Delight',
+      au12_au14_asymmetry_pattern: 'AU12/AU14 Asymmetry Pattern',
       masked_sadness:  'Masked Sadness',
       nervous_smile:   'Nervous Smile',
       irritation:      'Irritation',
@@ -178,15 +178,37 @@
       comfort:            'Comfort',
       authenticity:       'Expression Consistency',
       tension:            'Tension',
-      deception:          'Anomaly Pattern',
+      patternAnomaly:     'Pattern Anomaly',
       suppressionEffort:  'Suppression Effort',
       emotionalRegulation:'Emotional Regulation',
     }),
 
     PSYCHOLOGY_KEYS: Object.freeze([
       'valence','arousal','cognitiveLoad','stress','confidence',
-      'engagement','comfort','authenticity','tension','deception',
+      'engagement','comfort','authenticity','tension','patternAnomaly',
       'suppressionEffort','emotionalRegulation',
+    ]),
+
+    /* ── Observable movement summaries (v3.11) ── */
+    OBSERVABLE_LABELS: Object.freeze({
+      browRaise: 'Brow Raise',
+      browLower: 'Brow Lower',
+      eyeOpening: 'Eye Opening',
+      eyeClosure: 'Eye Closure',
+      cheekRaise: 'Cheek Raise',
+      noseWrinkle: 'Nose Wrinkle',
+      lipCornerPull: 'Lip Corner Pull',
+      lipCornerDepress: 'Lip Corner Depress',
+      mouthOpening: 'Mouth Opening',
+      lipCompression: 'Lip Compression',
+      bilateralAsymmetry: 'Bilateral Asymmetry',
+      motionEnergy: 'Motion Energy',
+    }),
+
+    OBSERVABLE_KEYS: Object.freeze([
+      'browRaise','browLower','eyeOpening','eyeClosure','cheekRaise','noseWrinkle',
+      'lipCornerPull','lipCornerDepress','mouthOpening','lipCompression',
+      'bilateralAsymmetry','motionEnergy',
     ]),
 
     /* ── Temporal Dynamics Config ──

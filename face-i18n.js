@@ -19,21 +19,22 @@
   var DICT = {
     'zh-CN': {
       /* ── Page / Titles ── */
-      pageTitle:           'MicroExpression Psychology v3 — 深度心理分析系统',
+      pageTitle:           'FaceVFX v3.11 — 可观察面部动作分析',
       cameraTitle:         '面部深度扫描 (78 Key Landmarks)',
-      exprTitle:           '表情特征提取',
-      authTitle:           '表情一致性评分',
+      exprTitle:           '最强 AU 激活与置信区间',
+      authTitle:           '贝叶斯时序 AU 状态',
       auTitle:             'FACS 动作单元拓扑',
-      psyTitle:            '实验性状态指标 (12D)',
-      transTitle:          '情感演变链路指标',
-      analysisTitle:       '深度模型推理',
-      microTitle:          '高频微表情捕获',
+      psyTitle:            '可观察动作摘要 (12D)',
+      transTitle:          '逐帧质量标记',
+      analysisTitle:       '质量、AU 区间与来源',
+      microTitle:          '校准与模型状态',
       headPoseTitle:       '头部姿态阵列',
 
       /* ── Status ── */
       statusScanning:      '面部扫描中...',
       statusPaused:        '已暂停 (标签页不可见)',
       statusOnline:        '系统在线 — 深度分析中',
+      statusQualityPaused: '当前帧质量不足，AU 输出已暂停',
       statusNoFace:        '未检测到面部',
       statusInit:          '系统神经网络初始化中...',
       statusNeedHTTPS:     '需要 HTTPS 或 localhost 环境',
@@ -47,15 +48,14 @@
       cameraError:         '摄像头错误: ',
 
       /* ── Authenticity ── */
-      authGenuine:         '真实',
-      authSuspect:         '存疑',
-      authFake:            '伪装',
-      authDuchenne:        '杜兴标记',
-      authTemporal:        '时序特征',
-      authSymmetry:        '动态对称',
-      authDuration:        '驻留周期',
-      authConflict:        '肌肉冲突',
-      authLeakage:         '肌能泄露',
+      authDuchenne:        '关键点完整性',
+      authTemporal:        '后验确定度',
+      authSymmetry:        '姿态适用度',
+      authDuration:        '状态持续时间',
+      authConflict:        '光照质量',
+      authLeakage:         '图像清晰度',
+      calibrationLocked:   '个人基线已锁定',
+      calibrationCollecting:'正在采集稳健个人基线',
 
       /* ── Expression Labels (29) ── */
       'expr.genuine_smile':    '真笑 (Duchenne)',
@@ -79,7 +79,7 @@
       'expr.interest':         '兴趣/好奇',
       'expr.pleasure':         '愉悦',
       'expr.suppression':      '情绪抑制',
-      'expr.duping_delight':   '欺骗快感',
+      'expr.au12_au14_asymmetry_pattern': 'AU12/AU14 不对称模式',
       'expr.masked_sadness':   '掩饰悲伤',
       'expr.nervous_smile':    '紧张微笑',
       'expr.irritation':         '烦躁',
@@ -98,9 +98,23 @@
       'psy.comfort':             '舒适度',
       'psy.authenticity':        '表情一致度',
       'psy.tension':             '紧张度',
-      'psy.deception':           '异常模式',
+      'psy.patternAnomaly':      '模式异常',
       'psy.suppressionEffort':   '抑制努力',
       'psy.emotionalRegulation': '情绪调节力',
+
+      /* ── Observable movement labels (v3.11) ── */
+      'obs.browRaise':            '眉部上提',
+      'obs.browLower':            '眉部下压',
+      'obs.eyeOpening':           '眼睑张开',
+      'obs.eyeClosure':           '眼睑闭合',
+      'obs.cheekRaise':           '面颊上提',
+      'obs.noseWrinkle':          '鼻部皱缩',
+      'obs.lipCornerPull':        '嘴角上提',
+      'obs.lipCornerDepress':     '嘴角下压',
+      'obs.mouthOpening':         '口部张开',
+      'obs.lipCompression':       '唇部压紧',
+      'obs.bilateralAsymmetry':   '双侧不对称度',
+      'obs.motionEnergy':         '动作变化量',
 
       /* ── UI Strings ── */
       blink:               '眨眼',
@@ -250,21 +264,22 @@
 
     'en-US': {
       /* ── Page / Titles ── */
-      pageTitle:           'MicroExpression Psychology v3 — Deep Psychology Analysis',
+      pageTitle:           'FaceVFX v3.11 — Observable Facial Movement Analysis',
       cameraTitle:         'Face Deep Scan (78 Key Landmarks)',
-      exprTitle:           'Expression Feature Extraction',
-      authTitle:           'Expression Consistency Score',
+      exprTitle:           'Strongest AU Activations & Intervals',
+      authTitle:           'Bayesian Temporal AU State',
       auTitle:             'FACS Action Unit Topology',
-      psyTitle:            'Experimental State Indicators (12D)',
-      transTitle:          'Emotional Transition Chain',
-      analysisTitle:       'Deep Model Inference',
-      microTitle:          'High-Freq Micro-Expression Capture',
+      psyTitle:            'Observable Movement Summary (12D)',
+      transTitle:          'Frame Quality Flags',
+      analysisTitle:       'Quality, AU Intervals & Provenance',
+      microTitle:          'Calibration & Model Status',
       headPoseTitle:       'Head Pose Array',
 
       /* ── Status ── */
       statusScanning:      'Scanning face...',
       statusPaused:        'Paused (tab hidden)',
       statusOnline:        'System online — deep analysis',
+      statusQualityPaused: 'Frame quality insufficient; AU output paused',
       statusNoFace:        'No face detected',
       statusInit:          'Neural network initializing...',
       statusNeedHTTPS:     'HTTPS or localhost required',
@@ -278,15 +293,14 @@
       cameraError:         'Camera error: ',
 
       /* ── Authenticity ── */
-      authGenuine:         'Genuine',
-      authSuspect:         'Suspect',
-      authFake:            'Fake',
-      authDuchenne:        'Duchenne Marker',
-      authTemporal:        'Temporal Pattern',
-      authSymmetry:        'Dynamic Symmetry',
-      authDuration:        'Hold Duration',
-      authConflict:        'Muscle Conflict',
-      authLeakage:         'Muscle Leakage',
+      authDuchenne:        'Landmark Integrity',
+      authTemporal:        'Posterior Certainty',
+      authSymmetry:        'Pose Suitability',
+      authDuration:        'State Duration',
+      authConflict:        'Lighting Quality',
+      authLeakage:         'Sharpness',
+      calibrationLocked:   'Personal baseline locked',
+      calibrationCollecting:'Collecting robust personal baseline',
 
       /* ── Expression Labels (29) ── */
       'expr.genuine_smile':    'Genuine Smile (Duchenne)',
@@ -310,7 +324,7 @@
       'expr.interest':         'Interest / Curiosity',
       'expr.pleasure':         'Pleasure',
       'expr.suppression':      'Emotion Suppression',
-      'expr.duping_delight':   'Duping Delight',
+      'expr.au12_au14_asymmetry_pattern': 'AU12/AU14 Asymmetry Pattern',
       'expr.masked_sadness':   'Masked Sadness',
       'expr.nervous_smile':    'Nervous Smile',
       'expr.irritation':         'Irritation',
@@ -329,9 +343,23 @@
       'psy.comfort':             'Comfort',
       'psy.authenticity':        'Expression Consistency',
       'psy.tension':             'Tension',
-      'psy.deception':           'Anomaly Pattern',
+      'psy.patternAnomaly':      'Pattern Anomaly',
       'psy.suppressionEffort':   'Suppression Effort',
       'psy.emotionalRegulation': 'Emotional Regulation',
+
+      /* ── Observable movement labels (v3.11) ── */
+      'obs.browRaise':            'Brow Raise',
+      'obs.browLower':            'Brow Lower',
+      'obs.eyeOpening':           'Eye Opening',
+      'obs.eyeClosure':           'Eye Closure',
+      'obs.cheekRaise':           'Cheek Raise',
+      'obs.noseWrinkle':          'Nose Wrinkle',
+      'obs.lipCornerPull':        'Lip Corner Pull',
+      'obs.lipCornerDepress':     'Lip Corner Depress',
+      'obs.mouthOpening':         'Mouth Opening',
+      'obs.lipCompression':       'Lip Compression',
+      'obs.bilateralAsymmetry':   'Bilateral Asymmetry',
+      'obs.motionEnergy':         'Motion Energy',
 
       /* ── UI Strings ── */
       blink:               'Blink',
@@ -499,6 +527,10 @@
     return t('psy.' + psyKey) || psyKey;
   }
 
+  function observableLabel(key) {
+    return t('obs.' + key) || key;
+  }
+
   /* ═══ Get / Set Locale ═══ */
   function getLocale() { return _locale; }
 
@@ -529,6 +561,7 @@
     t:                   t,
     exprLabel:           exprLabel,
     psyLabel:            psyLabel,
+    observableLabel:     observableLabel,
     getLocale:           getLocale,
     setLocale:           setLocale,
     getAvailableLocales: getAvailableLocales,

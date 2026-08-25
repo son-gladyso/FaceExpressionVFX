@@ -26,7 +26,7 @@
   <!-- ═══ Toolbar ═══ -->
   <div class="toolbar" id="toolbar">
     <div class="toolbar-left">
-      <span class="toolbar-brand">MicroExpr · Ψ</span>
+      <span class="toolbar-brand">FaceVFX · AU</span>
     </div>
     <div class="toolbar-right">
       <!-- History Recording -->
@@ -55,6 +55,7 @@
     <section class="camera-section">
       <h2 class="section-title">
         <span class="dot"></span> Face Deep Scan (78 Key Landmarks)
+        <span id="qualityDisplay" class="fps">Q —</span>
         <span id="fpsDisplay" class="fps">0 FPS</span>
       </h2>
 
@@ -88,20 +89,20 @@
     <!-- ═══ Middle: Expression + AUs ═══ -->
     <section class="data-section">
       <div class="panel expression-panel glass-panel">
-        <h3>Expression Feature Extraction <span class="deco-line"></span></h3>
+        <h3>Strongest AU Activations &amp; Intervals <span class="deco-line"></span></h3>
         <div id="exprList" class="expr-list"></div>
       </div>
 
-      <!-- Expression consistency panel (heuristic; not lie detection) -->
+      <!-- Explicit-duration Bayesian temporal state and capture diagnostics -->
       <div class="panel authenticity-panel glass-panel">
-        <h3>Expression Consistency Score <span id="authOverall" class="auth-badge">—</span></h3>
+        <h3>Bayesian Temporal AU State <span id="authOverall" class="auth-badge">—</span></h3>
         <div class="auth-factors" id="authFactors">
-          <div class="auth-row"><span>Duchenne Marker</span><div class="bar-track"><div class="bar-fill" id="authDuchenne"></div></div></div>
-          <div class="auth-row"><span>Temporal Pattern</span><div class="bar-track"><div class="bar-fill" id="authTemporal"></div></div></div>
-          <div class="auth-row"><span>Dynamic Symmetry</span><div class="bar-track"><div class="bar-fill" id="authSymmetry"></div></div></div>
-          <div class="auth-row"><span>Hold Duration</span><div class="bar-track"><div class="bar-fill" id="authDuration"></div></div></div>
-          <div class="auth-row"><span>Muscle Conflict</span><div class="bar-track"><div class="bar-fill" id="authConflict"></div></div></div>
-          <div class="auth-row"><span>Muscle Leakage</span><div class="bar-track"><div class="bar-fill" id="authLeakage"></div></div></div>
+          <div class="auth-row"><span>Landmark Integrity</span><div class="bar-track"><div class="bar-fill" id="authDuchenne"></div></div></div>
+          <div class="auth-row"><span>Posterior Certainty</span><div class="bar-track"><div class="bar-fill" id="authTemporal"></div></div></div>
+          <div class="auth-row"><span>Pose Suitability</span><div class="bar-track"><div class="bar-fill" id="authSymmetry"></div></div></div>
+          <div class="auth-row"><span>State Duration</span><div class="bar-track"><div class="bar-fill" id="authDuration"></div></div></div>
+          <div class="auth-row"><span>Lighting Quality</span><div class="bar-track"><div class="bar-fill" id="authConflict"></div></div></div>
+          <div class="auth-row"><span>Sharpness</span><div class="bar-track"><div class="bar-fill" id="authLeakage"></div></div></div>
         </div>
       </div>
 
@@ -111,26 +112,26 @@
       </div>
     </section>
 
-    <!-- ═══ Right: Psychology + Transitions ═══ -->
+    <!-- ═══ Right: Observable movement + diagnostics ═══ -->
     <section class="psychology-section">
       <div class="panel psy-panel glass-panel">
-        <h3>Experimental State Indicators (12D) <span class="deco-line"></span></h3>
+        <h3>Observable Movement Summary (12D) <span class="deco-line"></span></h3>
         <div id="psyDims" class="psy-dims"></div>
       </div>
 
       <!-- Transition Log Panel -->
       <div class="panel transition-panel glass-panel">
-        <h3>Emotional Transition Chain <span class="deco-line"></span></h3>
+        <h3>Frame Quality Flags <span class="deco-line"></span></h3>
         <div id="transitionLog" class="transition-log"></div>
       </div>
 
       <div class="panel analysis-panel glass-panel">
-        <h3>Deep Model Inference <span class="deco-line"></span></h3>
+        <h3>Quality, AU Intervals &amp; Provenance <span class="deco-line"></span></h3>
         <pre id="analysisText" class="analysis-text"></pre>
       </div>
 
       <div class="panel micro-panel glass-panel">
-        <h3>High-Freq Micro-Expression Capture <span id="blinkCount" class="blink-badge">BLINK: 0</span></h3>
+        <h3>Calibration &amp; Model Status <span id="blinkCount" class="blink-badge">BLINK: 0</span></h3>
         <div id="microLog" class="micro-log"></div>
       </div>
     </section>
@@ -174,8 +175,10 @@
   <script src="face-policies.js"></script>
   <script src="face-helpers.js"></script>
   <script src="face-au-detector.js"></script>
-  <script src="face-expression-analyzer.js"></script>
-  <script src="face-psychology-engine.js"></script>
+  <script src="face-quality.js"></script>
+  <script src="face-temporal.js"></script>
+  <script src="face-observables.js"></script>
+  <script src="face-model-adapter.js"></script>
   <script src="face-detector.js"></script>
   <script src="face-export.js"></script>
   <script src="face-history.js"></script>

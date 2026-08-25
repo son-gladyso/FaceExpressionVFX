@@ -4,7 +4,7 @@
  * ═══════════════════════════════════════════════════════════════ */
 'use strict';
 
-var CACHE_NAME = 'microexpr-v3.10.1';
+var CACHE_NAME = 'facevfx-v3.11.0';
 
 /* Static assets to pre-cache on install */
 var PRECACHE_URLS = [
@@ -16,8 +16,10 @@ var PRECACHE_URLS = [
   './face-policies.js',
   './face-helpers.js',
   './face-au-detector.js',
-  './face-expression-analyzer.js',
-  './face-psychology-engine.js',
+  './face-quality.js',
+  './face-temporal.js',
+  './face-observables.js',
+  './face-model-adapter.js',
   './face-detector.js',
   './face-export.js',
   './face-history.js',

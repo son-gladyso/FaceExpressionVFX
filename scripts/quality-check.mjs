@@ -51,15 +51,23 @@ check(html.includes('face-config.js'), 'index.html loads face-config.js');
 check(html.includes('face-i18n.js'), 'index.html loads face-i18n.js');
 check(html.includes('face-helpers.js'), 'index.html loads face-helpers.js');
 check(html.includes('face-au-detector.js'), 'index.html loads face-au-detector.js');
-check(html.includes('face-expression-analyzer.js'), 'index.html loads face-expression-analyzer.js');
-check(html.includes('face-psychology-engine.js'), 'index.html loads face-psychology-engine.js');
+check(html.includes('face-quality.js'), 'index.html loads face-quality.js');
+check(html.includes('face-temporal.js'), 'index.html loads face-temporal.js');
+check(html.includes('face-observables.js'), 'index.html loads face-observables.js');
+check(html.includes('face-model-adapter.js'), 'index.html loads face-model-adapter.js');
+check(!html.includes('face-psychology-engine.js'), 'index.html does not load removed psychology engine');
 check(html.includes('face-detector.js'), 'index.html loads face-detector.js');
 check(html.includes('face-export.js'), 'index.html loads face-export.js');
 check(html.includes('face-history.js'), 'index.html loads face-history.js');
 check(html.includes('script.js'), 'index.html loads script.js');
-check(html.includes('authenticity'), 'index.html has authenticity section');
 check(html.includes('transitionLog'), 'index.html has transition log');
 check(html.includes('head-pose'), 'index.html has head pose section');
+check(html.includes('AU Activations') && html.includes('Observable Movement'), 'index.html exposes observable AU outputs');
+
+const detector = readFileSync(join(ROOT, 'face-detector.js'), 'utf8');
+check(detector.includes('auEstimates'), 'pipeline exports per-AU intervals');
+check(detector.includes('quality.action === \'pause\''), 'pipeline enforces quality pause');
+check(!/psychology|authenticity|deception/i.test(detector), 'pipeline has no unsupported psychological outputs');
 
 // ── Check CSS ──
 const css = readFileSync(join(ROOT, 'styles.css'), 'utf8');

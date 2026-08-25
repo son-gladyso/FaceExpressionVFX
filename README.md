@@ -1,199 +1,47 @@
-# 🧠 FaceVFX · FACS 面部特征实验平台 v3.10.1
+# FaceExpressionVFX v3.11
 
-基于 FACS（面部动作编码系统）概念和 MediaPipe Face Mesh 的实时面部动作特征可视化实验。纯浏览器端运行，无需后端服务，支持 PWA 安装、离线运行、桌面端与移动端自适应布局。
+FaceExpressionVFX is a browser-based, local-only experimental visualizer for FACS-inspired facial action-unit (AU) geometry. Version 3.11 reports observable movement estimates and uncertainty; it does not output identity, intent, truthfulness, sincerity, personality, or psychological/medical diagnoses.
 
-> [!IMPORTANT]
-> 本项目输出的是依据面部几何与时序规则计算的**实验性启发式指标**，未经临床或法证验证。它不能识别身份，不能可靠判断一个人的真实情绪、意图、人格、真诚程度或是否说谎，也不能替代医疗诊断。请勿将结果用于招聘、执法、保险、教育处分、医疗或其他影响个人权益的决策。
+## v3.11 algorithm pipeline
 
-## 🔒 隐私设计
+1. MediaPipe supplies 468+ normalized face landmarks.
+2. A frame-quality gate scores landmark integrity, face bounds/scale, head pose, illumination, contrast, clipping, sharpness, and eye-region visibility/glare proxy.
+3. Frames are passed, confidence-downweighted, or paused. Paused frames cannot update AU inference or personal calibration.
+4. A robust personal baseline uses medians and median absolute deviation (MAD), rejects low-quality/outlier frames, and applies only slow clipped drift on quiet, high-quality frames.
+5. Head-pose compensation and face-normalized distances reduce pose and stable identity-geometry effects before AU calculation.
+6. Every AU returns `value`, `lower`, `upper`, `confidence`, and anatomical `region`.
+7. An explicit-duration Bayesian temporal filter replaces frame-count hysteresis and reports posterior confidence and normalized uncertainty.
+8. Twelve observable movement summaries are derived from the AU estimates with propagated intervals.
 
-- 摄像头画面在浏览器本地处理；项目没有后端，也没有内置遥测或上传功能。
-- 只有用户主动开始录制时，抽样后的分析数值才会写入本机 IndexedDB。
-- JSON/CSV 文件只在用户主动点击导出时生成。
-- Google Fonts 与 MediaPipe 脚本默认从第三方 CDN 加载，因此访问应用时会产生对这些服务的网络请求。
-- 删除浏览器站点数据可以清除本地档案和历史记录。详见 [`PRIVACY.md`](PRIVACY.md)。
+No learned model is bundled. An optional AU provider is enabled only when its metadata includes name, version, license, training-data provenance, AU label map, and evaluation metrics. Its contribution is quality-weighted and capped; deterministic geometry rules remain the fallback.
 
-## ✨ 核心能力
+## Run and verify
 
-### 🎯 20 个 FACS 动作单元（AU）检测
-- **AU1–AU46**：覆盖眉、眼、鼻、唇、颌全面部区域
-- **双侧独立测量**：AU1/2/6/12/15 左右分别计算，提取面部不对称性（Ekman et al., 1981）
-- **14 点鲁棒 EAR**：冗余多点眼宽测量，适配眼镜等遮挡物
-- **1€ 自适应滤波**：速度感知降噪（Casiez et al., CHI 2012），低延迟兼顾稳定性
-- **Savitzky-Golay 导数**：平滑速度/加速度估计（window=5, poly=2），用于 AU 动态分析
-- **个人基线校准**：首 60 帧中位数 + MAD 自适应阈值，消除个体差异
-
-### 🎭 24 + 1 种表情分类
-| 基础情绪 | 复合/微表情 | 心理行为 |
-|---------|------------|---------|
-| 真笑 (Duchenne) | 抑制微笑 | 情绪抑制 |
-| 社交微笑 | 欺骗快感 | 掩饰悲伤 |
-| 惊讶 · 恐惧 | 紧张微笑 | 焦虑 · 紧张 |
-| 愤怒 · 厌恶 | 不屑 · 蔑视 | 专注 · 困惑 |
-| 悲伤 · 痛苦 | 尴尬 | 兴趣 · 愉悦 |
-| 中性 | 疲倦 · 厌烦 | — |
-
-### 🔐 6 因子表情一致性评分
-综合多个可观察特征输出启发式一致性分数（不等同于真诚度或测谎结果）：
-
-| 因子 | 权重 | 原理 |
-|------|------|------|
-| 杜兴标记 | 25% | 眼轮匝肌参与度 + 鱼尾纹 z 曲率 |
-| 时序特征 | 20% | 起始/消退速度是否符合自然范围 |
-| 动态对称 | 15% | 双侧 AU 差异（>20% = 伪装信号）|
-| 驻留周期 | 10% | 持续时长合理性（0.5–4s）|
-| 肌肉冲突 | 15% | 拮抗肌同时激活（如 AU12+AU4）|
-| 微表情泄露 | 15% | 近 3 秒内是否出现矛盾微表情 |
-
-### 🧠 12 维实验性状态指标
-参考 Russell (1980) 情感环模型，融合 AU、表情、时序、眨眼信号。除情绪效价和唤醒度外，其余名称均为界面上的启发式维度，不代表可验证的内在心理状态：
-- **情绪效价** · **唤醒度** · **认知负荷** · **压力指数**
-- **自信代理指标** · **专注代理指标** · **舒适代理指标** · **表情一致度**
-- **紧张代理指标** · **异常模式分数** · **抑制模式分数** · **调节模式分数**
-
-### 🔬 微表情捕获（FPS 无关）
-- 基于 `Date.now()` 时间戳，40–500ms 瞬态表情自动捕获
-- 在滞后防抖**之前**检测，避免有效信号被吞噬
-- 泄露标记：与前序表情矛盾的微表情标记为 `[泄露]`
-
-### 📊 高级分析模块
-- **表情转换分析**：速度分类（突变 ≤100ms / 正常 / 平滑 ≥267ms）+ 心理意义推断
-- **认知失调检测**：表情与 AU 模式冲突时触发（Festinger, 1957）
-- **情绪惯性**：最近 30 次转换的变化频率
-- **调节风格分类**：自然表达 / 适应 / 压抑 / 伪装 / 混合（Gross, 1998）
-- **基线偏离追踪**：个人中性基线锁定后实时偏差报告
-
-### 👁️ 眨眼与疲劳分析
-- **眨眼率**：正常 15–20 次/分（Stern et al., 1984）
-- **PERCLOS**：O(1) 环形缓冲区，>15% = 金标准困倦指标（Dinges et al., 1998）
-- **IBI 变异系数**：无量纲眨眼规律性指标（CV > 0.5 = 不规则）
-- **眨眼聚簇**：≥3 连续快速眨眼 = 间歇性认知负荷波动
-
-### 🖥️ 3D 头部姿态估计
-- 基于 6 点几何模型 + z 深度修正的 pitch/yaw/roll 估计
-- 头部姿态补偿 AU 计算中的透视畸变
-
-### 🌐 国际化支持 (v3.6)
-- **双语言**：中文 (zh-CN) 和英文 (en-US) 完整支持
-- **全覆盖**：UI 标题、表情标签、心理维度、分析文本、转换意义、眨眼诊断全部国际化
-- **实时切换**：工具栏一键切换，无需刷新页面
-- **语言持久化**：用户选择通过 localStorage 保存，刷新页面自动恢复
-- **模块化字典**：`FaceI18n.t(key)` / `exprLabel()` / `psyLabel()` API
-- **事件监听**：`onLocaleChange()` 回调机制，各模块自动响应
-- **零闪烁**：初始化时立即应用 locale，避免默认语言闪现
-
-### 📤 数据导出 (v3.6)
-- **JSON 快照**：一键导出当前分析结果完整快照（含 AU、表情、心理维度、真实性、头部姿态）
-- **CSV 表格**：扁平化导出，便于 Excel / Python 后续分析
-- **历史导出**：按档案导出全部会话历史记录
-- **自动命名**：文件名含时间戳，避免覆盖
-
-### 📊 历史记录 & 趋势分析 (v3.6)
-- **IndexedDB 持久化**：浏览器端本地存储，关闭页面不丢失
-- **多人档案**：按人创建/切换/删除独立分析档案
-- **会话录制**：开始/停止录制，每 2 秒采样一个轻量快照
-- **趋势分析**：跨会话统计 12 维心理平均值 + 趋势方向（上升/下降/稳定）
-- **表情频率统计**：统计各表情在历史中的出现次数
-- **清除管理**：可按档案清除或全部清除
-
-### 📱 PWA 离线安装 & 响应式布局 (v3.9)
-- **Progressive Web App**：通过浏览器安装到桌面/手机主屏幕，独立窗口运行
-- **Service Worker 离线缓存**：本地资源 cache-first、CDN 资源 network-first 双策略
-- **5 级响应式断点**：1200px / 900px / 640px / 400px + 横屏手机特殊布局
-- **安全区适配**：`env(safe-area-inset-*)` 兼容刘海屏 iPhone
-- **触控友好**：最小 36px 触控目标、`touch-action: manipulation` 消除点击延迟
-- **自适应摄像头分辨率**：根据 `hardwareConcurrency` 和 `deviceMemory` 自动选择 320×240 / 480×360 / 640×480
-- **前置摄像头优先**：移动端自动 `facingMode: 'user'`
-- **安装提示**：`beforeinstallprompt` 事件处理 + 工具栏安装按钮（双语）
-
-## 🚀 快速开始
-
-```bash
-# 安装依赖（仅 ESLint 开发工具）
+```powershell
 npm install
-
-# 启动本地服务
-npx http-server . -p 8080 -o
-
-# 运行测试
-npm test
-
-# 完整验证
 npm run check
+npm start
 ```
 
-> 需要 HTTPS 或 localhost 环境以访问摄像头。
+`npm run check` runs unit/contract tests, a deterministic AU metric fixture, ESLint, and static release checks. The evaluation CLI reports per-AU precision, recall, F1 and false-positive rate plus held-out-subject summaries:
 
-## 🏗️ 架构
-
-```
-face-config.js              # 265 行 — 配置常量、78 关键点、阈值
-face-i18n.js                # 511 行 — 国际化字典 (zh-CN / en-US)、翻译 API
-face-policies.js            #  47 行 — 摄像头/安全/质量策略
-face-helpers.js             # 421 行 — 数学工具、1€ 滤波器、SG 导数、PERCLOS
-face-au-detector.js         # 603 行 — 20 AU 双侧检测、校准、动态分析
-face-expression-analyzer.js # 513 行 — 24 表情规则、真实性引擎、转换追踪
-face-psychology-engine.js   # 569 行 — 12 维心理、认知失调、调节风格
-face-detector.js            #  85 行 — 管线门面 (Facade) + 错误边界
-face-export.js              # 240 行 — JSON/CSV 数据导出 + 轻量快照映射
-face-history.js             # 352 行 — IndexedDB 历史记录、档案管理、趋势分析
-script.js                   # 780 行 — UI 渲染、PWA 安装提示、移动端适配
-sw.js                       # 105 行 — Service Worker 离线缓存策略
-manifest.json               #        — PWA Web App Manifest
-index.html                  # 180 行 — 赛博玻璃主题仪表盘 + PWA 元数据
-styles.css                  # 740 行 — 深色科技主题 + 5 级响应式布局
+```powershell
+node scripts/evaluate-au.mjs evaluation/fixtures/synthetic-au-eval.json
 ```
 
-**管线流程**：Config → I18n → Policies → Helpers → AU Detection → Expression Classification → Psychology Engine → Detector Facade → Export → History → UI
+The bundled vectors are synthetic contract tests, not evidence of real-world accuracy. See [evaluation/README.md](evaluation/README.md) for the fixed-video manifest requirements. No redistributable, lawfully labeled human-video dataset was present for v3.11, so this release makes no real-video accuracy or cross-person-generalization claim.
 
-## 🧪 测试
+## Main modules
 
-```bash
-npm test
-```
+- `face-quality.js` — frame gates and AU confidence intervals
+- `face-au-detector.js` — robust calibration, pose compensation, deterministic AU geometry
+- `face-temporal.js` — explicit-duration Bayesian state filter
+- `face-observables.js` — directly observable movement summaries
+- `face-model-adapter.js` — provenance-gated optional classifier and rule fallback
+- `scripts/evaluate-au.mjs` — fixed-manifest AU metrics and subject-held-out reports
 
-**566 项测试**覆盖全部模块，包括：
-- AU 计算 / 双侧测量 / 校准
-- 表情分类 / 真实性评分
-- 微表情 × 滞后防抖（Mock Date.now 确定性测试）
-- 12 维心理 / 效价映射完整性
-- 1€ 滤波器 / SG 导数 / PERCLOS / IBI CV
-- 认知失调 / 中性门控基线 / 眨眼 API
-- 负面情绪灵敏度 / 29 表情分类规则 / 4 轻微变体
-- 国际化 (i18n) locale 切换、字典完整性
-- 数据导出 (JSON/CSV 快照构建 + 轻量快照映射)
-- 历史记录 (IndexedDB API、趋势计算)
-- 管线错误边界、后向兼容性、Date.now 合并
+## Privacy and limits
 
-## 📐 技术栈
+Camera frames are processed in the browser. Nothing is uploaded by this project. History is recorded only after the user starts recording and remains in local IndexedDB; exports are explicit local downloads. Do not use FaceExpressionVFX for identification, surveillance, healthcare, employment, insurance, policing, education discipline, or other high-impact decisions. See [PRIVACY.md](PRIVACY.md).
 
-| 技术 | 说明 |
-|------|------|
-| MediaPipe Face Mesh v0.4 | 468 + 10 虹膜地标，`refineLandmarks: true` |
-| 1€ Filter | 速度自适应降噪（Casiez et al., 2012）|
-| Savitzky-Golay | 平滑导数估计（window=5, poly=2）|
-| PERCLOS | O(1) 环形缓冲区困倦检测（Dinges, 1998）|
-| PWA + Service Worker | 离线安装、cache-first / network-first 双策略 |
-| 响应式 CSS Grid | 5 级断点 + safe-area-inset 刘海屏适配 |
-| Vanilla JS IIFE | 零依赖，全 `Object.freeze` 封装 |
-| ESLint 10 | 静态分析 + 自定义质量检查脚本 |
-
-## 📚 科学参考文献
-
-- Ekman & Friesen (1978) — FACS 编码手册
-- Ekman (2003) — Duchenne 标记 & 欺骗线索
-- Ekman et al. (1981) — 面部不对称性
-- Russell (1980) — 情感环模型
-- Porter & ten Brinke (2008) — 微表情泄露
-- Hess & Kleck (1990) — 表情时序动态
-- Cohn & Schmidt (2004) — AU 起止分析
-- Casiez et al. (2012) — 1€ Filter
-- Savitzky & Golay (1964) — 平滑导数
-- Dinges et al. (1998) — PERCLOS 困倦指标
-- Stern et al. (1984) — 眨眼率与认知状态
-- Festinger (1957) — 认知失调理论
-- Gross (1998) — 情绪调节策略
-
-## 📄 License
-
-[MIT](LICENSE)
+MIT licensed. Third-party libraries and any future datasets/models retain their own licenses.
