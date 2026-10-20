@@ -1,5 +1,7 @@
 # FaceExpressionVFX v3.11
 
+[简体中文](docs/i18n/README.zh-CN.md) · [English](README.md) · [日本語](docs/i18n/README.ja.md) · [한국어](docs/i18n/README.ko.md) · [Español](docs/i18n/README.es.md) · [Français](docs/i18n/README.fr.md) · [Deutsch](docs/i18n/README.de.md) · [Português (Brasil)](docs/i18n/README.pt-BR.md)
+
 **See facial movement estimates together with the reasons to trust them less.**
 
 FaceExpressionVFX is an experimental browser workbench for developers exploring FACS-inspired facial action-unit (AU) geometry. Camera processing stays local; quality gates, calibration, and uncertainty make the pipeline inspectable. Version 3.11 reports observable movement estimates and uncertainty; it does not output identity, intent, truthfulness, sincerity, personality, or psychological/medical diagnoses.
