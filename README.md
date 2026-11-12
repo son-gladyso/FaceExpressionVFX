@@ -2,122 +2,106 @@
 
 [简体中文](docs/i18n/README.zh-CN.md) · [English](README.md) · [日本語](docs/i18n/README.ja.md) · [한국어](docs/i18n/README.ko.md) · [Español](docs/i18n/README.es.md) · [Français](docs/i18n/README.fr.md) · [Deutsch](docs/i18n/README.de.md) · [Português (Brasil)](docs/i18n/README.pt-BR.md) · [Русский](docs/i18n/README.ru.md) · [繁體中文](docs/i18n/README.zh-TW.md)
 
-**See facial movement estimates together with the reasons to trust them less.**
+> Most face demos show you a confident number: *"Happiness 87%."* They don't tell you it was computed from a blurry frame, with your head turned 30°, under a desk lamp.
+>
+> **This one shows the number *and* the reasons to trust it less.** Raise an eyebrow and you'll see a movement estimate with an interval, a confidence score and a quality gate that can down-weight or pause the frame entirely.
 
-FaceExpressionVFX is an experimental browser workbench for developers exploring FACS-inspired facial action-unit (AU) geometry. Camera processing stays local; quality gates, calibration, and uncertainty make the pipeline inspectable. Version 3.11 reports observable movement estimates and uncertainty; it does not output identity, intent, truthfulness, sincerity, personality, or psychological/medical diagnoses.
+An experimental, local-first browser workbench for developers exploring **FACS-inspired facial action-unit (AU) geometry**. It reports observable movement and uncertainty, and nothing else: no identity, intent, emotion, truthfulness, personality, or medical or psychological diagnosis.
 
-[First experiment](#first-experiment) · [Run locally](#run-and-verify) · [Pipeline](#v311-algorithm-pipeline) · [FAQ](#common-questions) · [Contribute](#help-improve-the-experiment)
+[First experiment](#first-experiment) · [Run locally](#run-and-verify) · [Pipeline](#how-the-pipeline-works) · [FAQ](#faq) · [Contribute](#contribute) · [For AI agents](#-for-ai-agents)
 
-## What you can explore
+---
 
-Facial movement demos often show a number without explaining when it becomes unreliable. This project makes the quality checks and uncertainty visible alongside the movement estimates.
+## 👋 For humans
 
-- Inspect brow, eye, cheek, nose, lip, and mouth movement summaries.
-- See how calibration, head pose, and frame quality affect the output.
-- Explore the deterministic rules and tests before adding an optional model.
-- Record history only when you choose, then export it as a local download.
+### First experiment
 
-It is intended for developers and experimenters who want to study observable facial movement and the limits of a geometry-based pipeline. It does not infer what a person feels or intends.
+1. [Start the app](#run-and-verify), sit somewhere well lit and follow the calibration with a neutral face.
+2. Make one small visible movement: raise your eyebrows or open your mouth.
+3. Watch three things at once: the movement value, its interval, and the quality / confidence indicators.
 
-## First experiment
+Then try these comparisons:
 
-Use [Run and verify](#run-and-verify) to start the app. Begin with a well-lit, neutral face, follow the calibration flow, then try a small visible movement such as raising your eyebrows or opening your mouth. Watch the quality and uncertainty indicators as well as the movement values.
-
-A useful comparison is a clear frontal view versus a more difficult view. Low-quality frames should be treated as limited evidence, not as stronger conclusions about a face. The documented pipeline can downweight or pause inference.
-
-No real-camera recording is embedded here yet. The bundled synthetic evaluation checks test contracts, not accuracy on human video.
-
-### Three useful things to compare
-
-| Experiment | Observe | Do not conclude |
+| Try | Observe | Do **not** conclude |
 | --- | --- | --- |
-| Neutral face, then a small eyebrow or mouth movement | Movement estimates and their intervals | That a value measures emotion, sincerity, or intent. |
-| Frontal view, then a more difficult pose or lighting condition | Quality score, confidence, and pause/downweight behavior | That a poor image provides stronger evidence about the person. |
-| Explicitly start a short recording, then export | Local history and JSON/CSV output | That the export is a validated diagnosis or real-world accuracy report. |
+| Neutral → small brow or mouth movement | Estimates and their intervals | That a value measures emotion, sincerity or intent |
+| Frontal view → harder pose or lighting | Quality score, confidence, downweight/pause | That a bad image tells you *more* about the person |
+| Start a short recording → export | Local history, JSON/CSV | That the export is a diagnosis or a real-world accuracy report |
 
-The interface includes a Chinese/English toggle, History, and JSON/CSV export controls. Recording is a deliberate action, not a prerequisite for inspecting the live pipeline.
+The UI has a Chinese/English toggle, History and export controls. Recording is always a deliberate action; you don't need it to explore the live pipeline.
 
-## v3.11 algorithm pipeline
+### How the pipeline works
 
-1. MediaPipe supplies 468+ normalized face landmarks.
-2. A frame-quality gate scores landmark integrity, face bounds/scale, head pose, illumination, contrast, clipping, sharpness, and eye-region visibility/glare proxy.
-3. Frames are passed, confidence-downweighted, or paused. Paused frames cannot update AU inference or personal calibration.
-4. A robust personal baseline uses medians and median absolute deviation (MAD), rejects low-quality/outlier frames, and applies only slow clipped drift on quiet, high-quality frames.
-5. Head-pose compensation and face-normalized distances reduce pose and stable identity-geometry effects before AU calculation.
-6. Every AU returns `value`, `lower`, `upper`, `confidence`, and anatomical `region`.
-7. An explicit-duration Bayesian temporal filter replaces frame-count hysteresis and reports posterior confidence and normalized uncertainty.
-8. Twelve observable movement summaries are derived from the AU estimates with propagated intervals.
+1. **Landmarks:** MediaPipe provides 468+ normalized face landmarks.
+2. **Quality gate:** it scores landmark integrity, face bounds/scale, head pose, illumination, contrast, clipping, sharpness and an eye-region visibility/glare proxy.
+3. **Pass / downweight / pause:** paused frames can't update AU inference *or* your calibration.
+4. **Robust personal baseline:** median + MAD with outlier rejection, and only slow, clipped drift on quiet high-quality frames.
+5. **Pose compensation:** head-pose compensation and face-normalized distances reduce pose and stable face-shape effects.
+6. **AU estimates:** each returns `value`, `lower`, `upper`, `confidence`, `region`.
+7. **Temporal filter:** an explicit-duration Bayesian filter (not frame-count hysteresis) gives posterior confidence and normalized uncertainty.
+8. **Observable summaries:** twelve movement summaries (brow, eye, cheek, nose, lip, mouth) with propagated intervals.
 
-No learned model is bundled. An optional AU provider is enabled only when its metadata includes name, version, license, training-data provenance, AU label map, and evaluation metrics. Its contribution is quality-weighted and capped; deterministic geometry rules remain the fallback.
+**No learned model is bundled.** An optional AU provider only activates if its metadata declares name, version, license, training-data provenance, AU label map and evaluation metrics. Even then its contribution is quality-weighted and capped, and the deterministic geometry stays as the fallback. Deep dive: [ALGORITHM_V3_11.md](ALGORITHM_V3_11.md).
 
-## Run and verify
+### Run and verify
 
-Prepare Node.js/npm, a modern camera-capable browser, and a working camera. Run from the repository root. Use `localhost` or HTTPS for camera access, and allow network access for the MediaPipe CDN scripts and web fonts. Local frame processing does not make the first launch fully offline.
+Needs Node.js/npm, a modern browser, a working camera, `localhost` or HTTPS, and network access for MediaPipe CDN scripts and web fonts. Frames are processed locally, but the first launch isn't offline.
 
 ```powershell
 npm install
-npm run check
-npm start
+npm run check     # unit/contract tests, deterministic AU metric fixture, ESLint, static release checks
+npm start         # static server on :8080 via npx http-server (may download it first)
 ```
 
-`npm start` launches a static server on port 8080 and requests that the browser open it. If needed, open `http://localhost:8080` yourself. The command uses `npx http-server`, which may download the server on first use.
+**First win:** in the live calibration/quality panel, make one movement and compare its estimate with the uncertainty display. Passing `npm run check` doesn't replace this camera check.
 
-**First successful action:** inspect the live calibration/quality panel, make one visible movement, and compare its estimate with the uncertainty display. Passing the command-line checks does not replace this camera check.
-
-`npm run check` runs unit/contract tests, a deterministic AU metric fixture, ESLint, and static release checks. The evaluation CLI reports per-AU precision, recall, F1 and false-positive rate plus held-out-subject summaries:
+Evaluation CLI (per-AU precision, recall, F1, false-positive rate, held-out-subject summaries):
 
 ```powershell
 node scripts/evaluate-au.mjs evaluation/fixtures/synthetic-au-eval.json
 ```
 
-The bundled vectors are synthetic contract tests, not evidence of real-world accuracy. See [evaluation/README.md](evaluation/README.md) for the fixed-video manifest requirements. No redistributable, lawfully labeled human-video dataset was present for v3.11, so this release makes no real-video accuracy or cross-person-generalization claim.
+> The bundled vectors are **synthetic contract tests**. No redistributable, lawfully labeled human-video dataset existed for v3.11, so **no real-video accuracy or cross-person generalization is claimed.** See [evaluation/README.md](evaluation/README.md).
 
-## Main modules
+### FAQ
 
-- `face-quality.js` — frame gates and AU confidence intervals
-- `face-au-detector.js` — robust calibration, pose compensation, deterministic AU geometry
-- `face-temporal.js` — explicit-duration Bayesian state filter
-- `face-observables.js` — directly observable movement summaries
-- `face-model-adapter.js` — provenance-gated optional classifier and rule fallback
-- `scripts/evaluate-au.mjs` — fixed-manifest AU metrics and subject-held-out reports
+**Is this an emotion detector?** No. Outputs are geometry and movement proxies.
+**Why did it pause?** Pose, visibility, lighting or another frame condition failed the gate. Improve the view; a pause is not a finding about the person.
+**Does the synthetic eval prove it works on my camera?** No. It checks metric and test contracts.
+**Where's my history?** In local IndexedDB, only after you start recording. Exports are local downloads. Treat both as personal data.
 
-## Common questions
+### Privacy and limits
 
-**Is this an emotion detector?** No. Outputs are geometry and movement proxies, not mental-state labels.
+Nothing is uploaded by this project. **Do not use it** for identification, surveillance, healthcare, employment, insurance, policing, school discipline or any other high-impact decision. See [PRIVACY.md](PRIVACY.md). MIT licensed; third-party libraries and any future datasets/models keep their own licenses.
 
-**Why does inference pause or confidence fall?** The quality gate considers pose, visibility, lighting, and other frame conditions. Check the quality indicators and improve the view rather than interpreting a paused result as a negative finding about the person.
+### Contribute
 
-**Is a learned AU model included?** No. The bundled pipeline uses deterministic geometry. Optional providers need metadata, provenance, licensing, and evaluation information before they can contribute.
+Welcome where results can be checked: frame-quality and calibration edge cases, accessible labels and clearer uncertainty wording, translations, AU geometry and temporal regression tests, reproducible evaluation tooling with properly licensed and consented data. Explain the problem, evidence, tests run and what remains unvalidated in your [PR](https://github.com/son-gladyso/FaceExpressionVFX/pulls); discuss big changes in an [issue](https://github.com/son-gladyso/FaceExpressionVFX/issues) first.
 
-**Does the synthetic evaluation prove accuracy on my camera?** No. It verifies metric/test contracts. Real-video validation requires a suitable, lawfully labeled evaluation set and the fixed-manifest process in [evaluation/README.md](evaluation/README.md).
+---
 
-**Where is recorded history?** In the browser's local IndexedDB after you start recording. Exports are local downloads; treat recordings and exports as personal data even though they are not automatically uploaded.
+## 🤖 For AI agents
 
-## Privacy and limits
+**Module map:**
 
-Camera frames are processed in the browser. Nothing is uploaded by this project. History is recorded only after the user starts recording and remains in local IndexedDB; exports are explicit local downloads. Do not use FaceExpressionVFX for identification, surveillance, healthcare, employment, insurance, policing, education discipline, or other high-impact decisions. See [PRIVACY.md](PRIVACY.md).
-
-MIT licensed. Third-party libraries and any future datasets/models retain their own licenses.
-
-## Help improve the experiment
-
-Contributions are welcome in areas where the result can be checked:
-
-- Frame-quality and calibration edge cases.
-- Accessible labels, clearer uncertainty explanations, and translation improvements.
-- Regression tests for AU geometry and temporal behavior.
-- Reproducible evaluation tooling with appropriately licensed and consented data.
-
-| Contribution area | Files to start with | Useful evidence |
+| File | Role | Evidence to add when changing it |
 | --- | --- | --- |
-| Frame-quality edge cases | `face-quality.js`, `face-policies.js` | A focused regression case and expected pass/downweight/pause behavior. |
-| Calibration or AU geometry | `face-au-detector.js`, `face-temporal.js` | A deterministic input sequence and explicit expected output boundaries. |
-| Language and UI clarity | `face-i18n.js`, `index.html` | Both language states and an explanation that preserves uncertainty. |
-| Evaluation tooling | `scripts/evaluate-au.mjs`, `evaluation/README.md` | Manifest/schema checks; label synthetic and real-video evidence separately. |
+| `face-quality.js`, `face-policies.js` | Frame gates, AU confidence intervals, policy | Focused regression + expected pass/downweight/pause |
+| `face-au-detector.js` | Robust calibration, pose compensation, deterministic AU geometry | Deterministic input sequence + explicit output bounds |
+| `face-temporal.js` | Explicit-duration Bayesian state filter | Same as above |
+| `face-observables.js` | Twelve observable movement summaries | Interval propagation preserved |
+| `face-model-adapter.js` | Provenance-gated optional provider + rule fallback | Metadata gate cannot be bypassed |
+| `face-i18n.js`, `index.html` | UI text, language toggle | Both languages; uncertainty preserved |
+| `face-history.js`, `face-export.js` | IndexedDB history, JSON/CSV export | Recording stays opt-in and local |
+| `scripts/evaluate-au.mjs`, `evaluation/` | Fixed-manifest metrics | Synthetic vs. real-video evidence labeled separately |
 
+**Hard rules:**
 
-Start with the relevant module and `npm run check`. In a [pull request](https://github.com/son-gladyso/FaceExpressionVFX/pulls), explain the problem, the evidence, the tests actually run, and what remains unvalidated. Discuss larger changes in an [issue](https://github.com/son-gladyso/FaceExpressionVFX/issues) before implementing them.
+- Never add outputs, labels or copy that claim emotion, intent, identity, truthfulness, personality, health or diagnosis. Keep the vocabulary to *observable movement*.
+- Paused frames must not update inference or calibration. Every AU must keep `value/lower/upper/confidence/region`.
+- Don't let an optional model bypass the provenance/metadata gate or the contribution cap; deterministic geometry stays the fallback.
+- Never upload frames, landmarks or history. Recording must stay a deliberate user action.
+- Don't present synthetic fixture metrics as real-world accuracy.
+- Don't commit face recordings, biometric embeddings, model weights or datasets without explicit rights.
 
-Do not contribute private face recordings, biometric embeddings, model weights, or datasets without the rights and permissions to share them. Preserve the distinction between observable movement and claims about identity, emotions, intent, or health.
-
-
+**Verify:** `npm run check`
